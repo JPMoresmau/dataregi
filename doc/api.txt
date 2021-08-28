@@ -1,0 +1,18 @@
+login via email -> sends email with code
+check email code -> send back token
+oidc...
+
+upload document
+get document (if access)
+share document (put/delete)
+list documents
+	- by timestamp
+	- owner only
+	- limit
+get similar document
+	- owner only
+	- limit
+search by text -> postgres text engine for now
+	- name only or content
+	- owner only
+	- limit

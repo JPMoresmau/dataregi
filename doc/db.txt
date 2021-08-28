@@ -1,0 +1,30 @@
+- users
+	- id
+	- email address unique key
+	- name?
+	- timestamp
+	- last login
+- organizations
+	- id
+	- name
+	- timestamp
+- members
+	- org id (index)
+	- user id (index)
+	- timestamp
+- document
+	- id
+	- name (not unique) (unique key 1)
+	- timestamp (unique key 1)
+	- owner id (unique key 1)
+	- data (binary)
+	- hash (non unique index)
+- similar (store similar documents in two rows, with reverse id1 and id2)
+	- id1 (index) (primary key 1)
+	- id2 (primary key 2)
+	- score
+- accesses (store who can access)
+	- user id (index)
+	- document id (index)
+	- last access timestamp (nullable)
+	

@@ -1,0 +1,23 @@
+Login
+- email code
+- google OIDC?
+- keycloak OIDC?
+	- keycloak docker image, etc.
+
+Home page
+- upload document
+	- restrict extensions to what https://github.com/tafia/calamine supports?
+- my latest documents
+	- 10 documents last viewed/uploaded
+- search
+	- text search on all documents I can access
+
+Document page
+- document name and version
+- metadata: who uploaded/modified when, am I owner or user...
+- other versions
+- download file
+- delete option
+- similar documents
+	- similar name
+	- same hash
