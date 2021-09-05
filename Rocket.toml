@@ -1,3 +1,7 @@
+[default]
+template_dir = "templates"
+token_lifespan_minutes = 10
+
 [debug]
 callback_name = "local"
 

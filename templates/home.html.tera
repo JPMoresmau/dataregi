@@ -30,9 +30,9 @@
                     <div class="col-3">
                     </div>
                     <div class="col-6 form-group">
-                        <input type="text" placeholder="Enter your email address." />
+                        <input type="file" placeholder="Choose a spreadsheet." />
                         <button class="form-group-btn btn-link">
-                            Login
+                            Upload
                         </button>
                     </div>
                 </div>
