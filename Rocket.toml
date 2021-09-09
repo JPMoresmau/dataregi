@@ -11,3 +11,6 @@ callback_name = "www"
 [default.tls]
 certs = "dataregi.com/fullchain.pem"
 key = "dataregi.com/privkey.pem"
+
+[global.databases]
+postgres_main={ url="postgres://postgres:postgres@localhost/dataregi"}
