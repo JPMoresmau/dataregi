@@ -12,11 +12,12 @@
 	- org id (index)
 	- user id (index)
 	- timestamp
-- document
+- documents
 	- id
 	- name (not unique) (unique key 1)
 	- timestamp (unique key 1)
 	- owner id (unique key 1)
+	- mime
 	- data (binary)
 	- hash (non unique index)
 - similar (store similar documents in two rows, with reverse id1 and id2)

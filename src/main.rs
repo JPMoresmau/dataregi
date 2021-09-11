@@ -8,35 +8,39 @@ extern crate diesel;
 use rocket::fairing::AdHoc;
 use rocket::fs::{relative, NamedFile};
 use rocket::http::Status;
-use rocket::http::{Cookie, CookieJar, SameSite};
+use rocket::http::{Cookie, CookieJar};
+use rocket::outcome::IntoOutcome;
 use rocket::response::status;
 use rocket::response::status::NotFound;
-use rocket::serde::{json::Json, Deserialize, Serialize};
+use rocket::request::{self, FromRequest, Request};
+use rocket::serde::json::Json;
 use rocket::State;
 use rocket::{Build, Rocket};
-use rocket_dyn_templates::Template;
+use rocket_dyn_templates::{Template};
 use std::path::{Path, PathBuf};
 
 use lettre::Message;
 use rusoto_core::Region;
 use rusoto_ses::{RawMessage, SendRawEmailRequest, Ses, SesClient};
-use std::collections::HashMap;
 use std::env;
-use std::sync::Mutex;
 
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use rocket_sync_db_pools::database;
-use std::time::Instant;
+use uuid::Uuid;
 
 use chrono::Utc;
 use diesel::prelude::*;
 
-pub mod model;
-pub mod schema;
-use model::User;
+pub mod base;
+use base::*;
 
-#[get("/<path..>")]
+pub mod model;
+use model::User;
+pub mod schema;
+
+pub mod docs;
+
+#[get("/<path..>", rank=3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
     let path = Path::new(relative!("site")).join(path);
     NamedFile::open(path)
@@ -44,57 +48,32 @@ async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
         .map_err(|e| NotFound(e.to_string()))
 }
 
-#[derive(Serialize)]
-struct IndexContext<'r> {
-    error: &'r str,
-}
 
-#[get("/")]
-fn index() -> Template {
+#[get("/", rank=2)]
+pub fn index() -> Template {
     let ctx = IndexContext { error: "" };
     Template::render("index", &ctx)
 }
 
-#[derive(Deserialize)]
-struct LoginEmail<'r> {
-    address: &'r str,
-}
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for UserId {
+    type Error = std::convert::Infallible;
 
-#[derive(Deserialize)]
-struct Config {
-    port: u16,
-    callback_name: String,
-    token_lifespan_minutes: u64,
-}
-
-struct LoginRegistration {
-    address: String,
-    timestamp: Instant,
-}
-
-impl LoginRegistration {
-    fn new<S: Into<String>>(address: S) -> Self {
-        LoginRegistration {
-            address: address.into(),
-            timestamp: Instant::now(),
-        }
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<UserId, Self::Error> {
+        request.cookies()
+            .get_private("id")
+            .map(|s| Uuid::parse_str(s.value()).map(UserId).ok())
+            .flatten()
+            .or_forward(())
     }
 }
 
-struct EmailTokens {
-    tokens: Mutex<HashMap<String, LoginRegistration>>,
+#[get("/")]
+pub fn index_user(userid: UserId) -> Template {
+    let ctx = UserContext { user_id: &userid.0 };
+    Template::render("home", &ctx)
 }
 
-impl Default for EmailTokens {
-    fn default() -> Self {
-        EmailTokens {
-            tokens: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
-#[database("postgres_main")]
-struct MainDbConn(diesel::PgConnection);
 
 #[post("/loginEmail", data = "<email>")]
 async fn send_login_email(
@@ -168,7 +147,7 @@ async fn login_from_token(
                 Ok(ouser) => {
                     let ruuid = match ouser {
                         None => {
-                            let user = User::new(reg.address);
+                            let user = User::new_login(reg.address);
                             conn.run(move |c| {
                                 diesel::insert_into(users)
                                     .values(&user)
@@ -191,8 +170,6 @@ async fn login_from_token(
                         Ok(uuid) => {
                             let mut c = Cookie::new("id", uuid.to_string());
                             c.set_secure(Some(true));
-                            c.set_http_only(Some(true));
-                            c.set_same_site(SameSite::Lax);
                             cookies.add_private(c);
                         }
                         Err(e) => {
@@ -263,7 +240,7 @@ fn rocket() -> _ {
         .attach(AdHoc::on_ignite("Diesel Migrations", run_migrations))
         .mount(
             "/",
-            routes![index, static_files, send_login_email, login_from_token],
+            routes![index_user, index, static_files, send_login_email, login_from_token],
         )
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
