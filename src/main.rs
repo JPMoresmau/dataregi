@@ -10,13 +10,12 @@ use rocket::fs::{relative, NamedFile};
 use rocket::http::Status;
 use rocket::http::{Cookie, CookieJar};
 use rocket::outcome::IntoOutcome;
-use rocket::response::status;
-use rocket::response::status::NotFound;
 use rocket::request::{self, FromRequest, Request};
+use rocket::response::{status, status::NotFound, Flash, Redirect};
 use rocket::serde::json::Json;
 use rocket::State;
 use rocket::{Build, Rocket};
-use rocket_dyn_templates::{Template};
+use rocket_dyn_templates::Template;
 use std::path::{Path, PathBuf};
 
 use lettre::Message;
@@ -40,7 +39,7 @@ pub mod schema;
 
 pub mod docs;
 
-#[get("/<path..>", rank=3)]
+#[get("/<path..>", rank = 3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
     let path = Path::new(relative!("site")).join(path);
     NamedFile::open(path)
@@ -48,8 +47,7 @@ async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
         .map_err(|e| NotFound(e.to_string()))
 }
 
-
-#[get("/", rank=2)]
+#[get("/", rank = 2)]
 pub fn index() -> Template {
     let ctx = IndexContext { error: "" };
     Template::render("index", &ctx)
@@ -60,7 +58,8 @@ impl<'r> FromRequest<'r> for UserId {
     type Error = std::convert::Infallible;
 
     async fn from_request(request: &'r Request<'_>) -> request::Outcome<UserId, Self::Error> {
-        request.cookies()
+        request
+            .cookies()
             .get_private("id")
             .map(|s| Uuid::parse_str(s.value()).map(UserId).ok())
             .flatten()
@@ -73,7 +72,6 @@ pub fn index_user(userid: UserId) -> Template {
     let ctx = UserContext { user_id: &userid.0 };
     Template::render("home", &ctx)
 }
-
 
 #[post("/loginEmail", data = "<email>")]
 async fn send_login_email(
@@ -193,6 +191,12 @@ async fn login_from_token(
     }
 }
 
+#[get("/logout")]
+async fn logout(cookies: &CookieJar<'_>) -> Flash<Redirect> {
+    cookies.remove_private(Cookie::named("id"));
+    Flash::success(Redirect::to("/"), "Successfully logged out.")
+}
+
 async fn send_email_ses(
     ses_client: &SesClient,
     from: &str,
@@ -240,7 +244,14 @@ fn rocket() -> _ {
         .attach(AdHoc::on_ignite("Diesel Migrations", run_migrations))
         .mount(
             "/",
-            routes![index_user, index, static_files, send_login_email, login_from_token],
+            routes![
+                index_user,
+                index,
+                static_files,
+                send_login_email,
+                login_from_token,
+                logout
+            ],
         )
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
