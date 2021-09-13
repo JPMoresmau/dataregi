@@ -1,11 +1,18 @@
 use rocket::serde::{Deserialize, Serialize};
 
+use std::io::Error as IOError;
+use diesel::result::Error as DieselError;
+use rocket::http::Status;
+use rocket::request::Request;
+use rocket::response::{Responder,Result};
 use rocket_sync_db_pools::database;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
-
+use figment::value::magic::RelativePathBuf;
 use uuid::Uuid;
+use std::fmt;
+use std::error::Error as StdError;
 
 #[derive(Serialize)]
 pub struct IndexContext<'r> {
@@ -29,6 +36,7 @@ pub struct Config {
     pub port: u16,
     pub callback_name: String,
     pub token_lifespan_minutes: u64,
+    pub temp_dir: RelativePathBuf,
 }
 
 pub struct LoginRegistration {
@@ -59,3 +67,50 @@ impl Default for EmailTokens {
 
 #[database("postgres_main")]
 pub struct MainDbConn(diesel::PgConnection);
+
+
+#[derive(Debug)]
+pub enum DRError{
+    DatabaseError(String),
+    IOError(String),
+}
+
+impl<'r,'o: 'r> Responder<'r,'o> for DRError {
+    fn respond_to(self, _request: &'r Request<'_>) -> Result<'o> {
+        println!("error: {}",self);
+        Err(Status::InternalServerError)
+    }
+}
+
+impl fmt::Display for DRError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            DRError::DatabaseError(msg)=>msg,
+            DRError::IOError(msg)=>msg,
+        })
+    }
+}
+
+impl StdError for DRError {
+    fn description(&self) -> &str {
+        match self {
+            DRError::DatabaseError(msg)=>msg,
+            DRError::IOError(msg)=>msg,
+        }
+
+    }
+}
+
+impl From<DieselError> for DRError {
+    fn from(e: DieselError) -> Self {
+        DRError::DatabaseError(e.to_string())
+    }
+}
+
+impl From<IOError> for DRError {
+    fn from(e: IOError) -> Self {
+        DRError::IOError(e.to_string())
+    }
+}
+
+pub type DRResult<T, E = DRError> = std::result::Result<T, E>;

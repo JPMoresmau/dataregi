@@ -411,6 +411,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "failure",
+ "figment",
  "lettre",
  "rand",
  "rocket",

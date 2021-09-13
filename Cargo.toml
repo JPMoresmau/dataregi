@@ -19,3 +19,4 @@ diesel = { version = "1.4.7", features = ["postgres", "r2d2", "uuidv07", "chrono
 diesel_migrations = "1.4"
 uuid = { version = "0.8.2", features= ["serde", "v4"] }
 chrono = "0.4.19"
+figment = "0.10.6"

@@ -1,0 +1,11 @@
+<div class="toast toast--success" id="toast" style="visibility:hidden">
+    <button class="btn-close" onclick="document.querySelector('#toast').style.visibility='hidden'"></button>
+    <h4 class="toast__title" id="message"></h4>
+</div>
+
+<script>
+    function showToast(data){
+        document.querySelector("#message").innerHTML=data;
+        document.querySelector("#toast").style.visibility='visible';
+    }
+</script>

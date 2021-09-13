@@ -253,6 +253,7 @@ fn rocket() -> _ {
                 logout
             ],
         )
+        .mount("/docs",docs::routes())
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
         .attach(Template::fairing())

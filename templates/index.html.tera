@@ -43,10 +43,7 @@
                     <div class="col-3">
                     </div>
                     <div class="col-6"></div>
-                    <div class="toast toast--success" id="toast" style="visibility:hidden">
-                        <button class="btn-close" onclick="document.querySelector('#toast').style.visibility='hidden'"></button>
-                        <h4 class="toast__title" id="message"></h4>
-                    </div>
+                    {% include "toast" %}
                     </div>
                 </div>
             </div>
@@ -69,9 +66,7 @@
                     body: JSON.stringify({"address":email})
                 });
                 response.json().then(data=>{
-
-                    document.querySelector("#message").innerHTML=data;
-                    document.querySelector("#toast").style.visibility='visible';
+                    showToast(data);
                 });
             }
         }
