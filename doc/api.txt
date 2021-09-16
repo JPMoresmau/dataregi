@@ -4,6 +4,7 @@ oidc...
 
 upload document
 get document (if access)
+delete document (if access)
 share document (put/delete)
 list documents
 	- by timestamp

@@ -13,5 +13,12 @@ callback_name = "www"
 certs = "dataregi.com/fullchain.pem"
 key = "dataregi.com/privkey.pem"
 
-[global.databases]
+[test]
+secret_key = "34z7q9pR16SqrMFTptf7nte7iCpY/9S+TQYDVIwRNkA="
+callback_name = "test"
+
+[default.databases]
 postgres_main={ url="postgres://postgres:postgres@localhost/dataregi"}
+
+[test.databases]
+postgres_main={ url="postgres://postgres:postgres@localhost/dataregi_test"}
