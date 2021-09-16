@@ -11,6 +11,8 @@ use uuid::Uuid;
 
 use chrono::Utc;
 use diesel::prelude::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(FromForm)]
 struct Upload<'r> {
@@ -21,8 +23,10 @@ struct Upload<'r> {
 #[post("/", data = "<upload>")]
 async fn upload(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<String>>>{
     let mut uuids=vec![];
+    println!("files:{}",upload.files.len());
     for file in upload.files.iter_mut() {
         if let Some(name) = file.name() {
+            println!("name:{}",name);
             let mut full=PathBuf::new();
             full.push(&config.temp_dir.original());
             full.push(userid.0.to_string());
@@ -31,6 +35,10 @@ async fn upload(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Conf
             let doc_name= file.raw_name().map(|f| format!("{}",f.dangerous_unsafe_unsanitized_raw())).unwrap_or(String::from(name));
             file.persist_to(&full).await?;
             let data=read(&full)?;
+            let mut hasher = DefaultHasher::new();
+            data.hash(&mut hasher);
+            let hash= hasher.finish();
+
             let doc = Document{
                 id: Uuid::new_v4(),
                 name: doc_name,
@@ -38,7 +46,7 @@ async fn upload(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Conf
                 owner: userid.0,
                 mime: file.content_type().map(|ct| format!("{}",ct)),
                 data: data,
-                hash: None
+                hash: Some(format!("{}",hash))
             };
             remove_file(&full)?;
 

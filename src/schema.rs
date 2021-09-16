@@ -6,7 +6,7 @@ table! {
         owner -> Nullable<Uuid>,
         mime -> Nullable<Text>,
         data -> Bytea,
-        hash -> Nullable<Int8>,
+        hash -> Nullable<Text>,
     }
 }
 

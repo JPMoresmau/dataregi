@@ -1,6 +1,6 @@
 <div class="toast toast--success" id="toast" style="visibility:hidden">
     <button class="btn-close" onclick="document.querySelector('#toast').style.visibility='hidden'"></button>
-    <h4 class="toast__title" id="message"></h4>
+    <p id="message"></p>
 </div>
 
 <script>

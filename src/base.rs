@@ -17,6 +17,7 @@ use std::error::Error as StdError;
 #[derive(Serialize)]
 pub struct IndexContext<'r> {
     pub error: &'r str,
+    pub message: &'r str,
 }
 
 #[derive(Serialize)]

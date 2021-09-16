@@ -42,5 +42,5 @@ pub struct Document {
     pub owner: Uuid,
     pub mime: Option<String>,
     pub data: Vec<u8>,
-    pub hash: Option<i64>
+    pub hash: Option<String>
 }

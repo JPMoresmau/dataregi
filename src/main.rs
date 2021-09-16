@@ -10,7 +10,7 @@ use rocket::fs::{relative, NamedFile};
 use rocket::http::Status;
 use rocket::http::{Cookie, CookieJar};
 use rocket::outcome::IntoOutcome;
-use rocket::request::{self, FromRequest, Request};
+use rocket::request::{self, FromRequest, Request,FlashMessage};
 use rocket::response::{status, status::NotFound, Flash, Redirect};
 use rocket::serde::json::Json;
 use rocket::State;
@@ -48,8 +48,8 @@ async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
 }
 
 #[get("/", rank = 2)]
-pub fn index() -> Template {
-    let ctx = IndexContext { error: "" };
+pub fn index(flash: Option<FlashMessage>) -> Template {
+    let ctx = IndexContext { error: "", message: &flash.map(|f| format!("{}",f.message())).unwrap_or_else(|| String::new()) };
     Template::render("index", &ctx)
 }
 
@@ -183,7 +183,7 @@ async fn login_from_token(
     } else {
         error = String::from("Could not log in, invalid token");
     }
-    let ctx = IndexContext { error: &error };
+    let ctx = IndexContext { error: &error, message: "" };
     if error.is_empty() {
         Template::render("home", &ctx)
     } else {

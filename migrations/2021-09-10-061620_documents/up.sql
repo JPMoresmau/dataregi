@@ -5,7 +5,7 @@ CREATE TABLE documents (
     owner uuid REFERENCES users(id),
     mime text,
     data bytea NOT NULL,
-    hash bigint
+    hash text
 );
 
 CREATE INDEX documents_unique_idx ON documents (name, owner, created);
