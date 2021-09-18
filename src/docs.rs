@@ -1,5 +1,6 @@
 use rocket::{Route, State};
 use crate::base::*;
+use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::form::Form;
 use rocket::fs::TempFile;
@@ -7,6 +8,8 @@ use std::path::PathBuf;
 use std::fs::{read,create_dir_all, remove_file};
 use crate::model::Document;
 use crate::schema::documents::dsl::documents;
+use crate::schema::documents::{id,owner};
+
 use uuid::Uuid;
 
 use chrono::Utc;
@@ -21,7 +24,7 @@ struct Upload<'r> {
 
 
 #[post("/", data = "<upload>")]
-async fn upload(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<String>>>{
+async fn upload_doc(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<String>>>{
     let mut uuids=vec![];
     println!("files:{}",upload.files.len());
     for file in upload.files.iter_mut() {
@@ -45,6 +48,7 @@ async fn upload(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Conf
                 created: Utc::now(),
                 owner: userid.0,
                 mime: file.content_type().map(|ct| format!("{}",ct)),
+                size: data.len() as i64,
                 data: data,
                 hash: Some(format!("{}",hash))
             };
@@ -62,6 +66,31 @@ async fn upload(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Conf
     Ok(Json(uuids))
 }
 
+#[get("/<uuid>")]
+async fn get_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Json<Document>>{
+    let real_uuid=Uuid::parse_str(uuid)?;
+  
+    let mut docs=conn.run(move |c| {
+        documents.filter(id.eq(real_uuid)).filter(owner.eq(userid.0)).load::<Document>(c)
+    }).await?;
+    match docs.pop(){
+        None => Err(DRError::NotFoundError),
+        Some(doc) =>  Ok(Json(doc)),
+    }
+    
+}
+
+#[delete("/<uuid>")]
+async fn delete_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Status>{
+    let real_uuid=Uuid::parse_str(uuid)?;
+  
+    conn.run(move |c| {
+        diesel::delete(documents.filter(id.eq(real_uuid)).filter(owner.eq(userid.0))).execute(c)
+    }).await?;
+    Ok(Status::NoContent)
+    
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![upload]
+    routes![upload_doc, get_doc, delete_doc]
 }

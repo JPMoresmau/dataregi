@@ -74,12 +74,18 @@ pub struct MainDbConn(diesel::PgConnection);
 pub enum DRError{
     DatabaseError(String),
     IOError(String),
+    UuidError(String),
+    NotFoundError,
 }
 
 impl<'r,'o: 'r> Responder<'r,'o> for DRError {
     fn respond_to(self, _request: &'r Request<'_>) -> Result<'o> {
         println!("error: {}",self);
-        Err(Status::InternalServerError)
+        match self {
+            DRError::NotFoundError=> Err(Status::NotFound),
+            _ => Err(Status::InternalServerError),
+        }
+        
     }
 }
 
@@ -88,6 +94,8 @@ impl fmt::Display for DRError {
         f.write_str(match self {
             DRError::DatabaseError(msg)=>msg,
             DRError::IOError(msg)=>msg,
+            DRError::UuidError(msg)=>msg,
+            DRError::NotFoundError=> "Not Found",
         })
     }
 }
@@ -97,6 +105,8 @@ impl StdError for DRError {
         match self {
             DRError::DatabaseError(msg)=>msg,
             DRError::IOError(msg)=>msg,
+            DRError::UuidError(msg)=>msg,
+            DRError::NotFoundError=> "Not Found",
         }
 
     }
@@ -114,4 +124,10 @@ impl From<IOError> for DRError {
     }
 }
 
-pub type DRResult<T, E = DRError> = std::result::Result<T, E>;
+impl From<uuid::Error> for DRError {
+    fn from(e: uuid::Error) -> Self {
+        DRError::UuidError(e.to_string())
+    }
+}
+
+pub type DRResult<T> = std::result::Result<T, DRError>;

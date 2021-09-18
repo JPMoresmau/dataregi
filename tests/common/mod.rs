@@ -12,6 +12,6 @@ pub fn setup() -> Client{
     client
 }
 
-pub fn with_test_login(req: LocalRequest) -> LocalRequest {
-    req.private_cookie(Cookie::new("id", "b9518d55-3256-4b96-81d0-65b1d7c4fb38"))
+pub fn with_test_login(req: LocalRequest, user_idx: u8) -> LocalRequest {
+    req.private_cookie(Cookie::new("id", format!("b9518d55-3256-4b96-81d0-65b1d7c4fb3{}",user_idx)))
 }

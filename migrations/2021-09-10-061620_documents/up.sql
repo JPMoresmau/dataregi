@@ -2,8 +2,9 @@ CREATE TABLE documents (
     id uuid PRIMARY KEY,
     name text NOT NULL,
     created timestamptz NOT NULL,
-    owner uuid REFERENCES users(id),
+    owner uuid NOT NULL REFERENCES users(id),
     mime text,
+    size bigint NOT NULL DEFAULT 0,
     data bytea NOT NULL,
     hash text
 );

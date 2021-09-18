@@ -3,8 +3,9 @@ table! {
         id -> Uuid,
         name -> Text,
         created -> Timestamptz,
-        owner -> Nullable<Uuid>,
+        owner -> Uuid,
         mime -> Nullable<Text>,
+        size -> Int8,
         data -> Bytea,
         hash -> Nullable<Text>,
     }
