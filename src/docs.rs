@@ -6,9 +6,9 @@ use rocket::form::Form;
 use rocket::fs::TempFile;
 use std::path::PathBuf;
 use std::fs::{read,create_dir_all, remove_file};
-use crate::model::Document;
+use crate::model::{Document,DocumentInfo};
 use crate::schema::documents::dsl::documents;
-use crate::schema::documents::{id,owner};
+use crate::schema::documents as docs;
 
 use uuid::Uuid;
 
@@ -36,6 +36,11 @@ async fn upload_doc(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<
             create_dir_all(&full)?;
             full.push(name);
             let doc_name= file.raw_name().map(|f| format!("{}",f.dangerous_unsafe_unsanitized_raw())).unwrap_or(String::from(name));
+            
+            let short_name=  match doc_name.rfind('/') {
+                Some(ix) => String::from(doc_name.split_at(ix+1).1),
+                _ => doc_name,
+            };
             file.persist_to(&full).await?;
             let data=read(&full)?;
             let mut hasher = DefaultHasher::new();
@@ -44,7 +49,7 @@ async fn upload_doc(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<
 
             let doc = Document{
                 id: Uuid::new_v4(),
-                name: doc_name,
+                name: short_name,
                 created: Utc::now(),
                 owner: userid.0,
                 mime: file.content_type().map(|ct| format!("{}",ct)),
@@ -71,7 +76,7 @@ async fn get_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Json<D
     let real_uuid=Uuid::parse_str(uuid)?;
   
     let mut docs=conn.run(move |c| {
-        documents.filter(id.eq(real_uuid)).filter(owner.eq(userid.0)).load::<Document>(c)
+        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0)).load::<Document>(c)
     }).await?;
     match docs.pop(){
         None => Err(DRError::NotFoundError),
@@ -85,12 +90,49 @@ async fn delete_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Sta
     let real_uuid=Uuid::parse_str(uuid)?;
   
     conn.run(move |c| {
-        diesel::delete(documents.filter(id.eq(real_uuid)).filter(owner.eq(userid.0))).execute(c)
+        diesel::delete(documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0))).execute(c)
     }).await?;
     Ok(Status::NoContent)
     
 }
 
+#[get("/?<name>&<order>&<limit>&<owner>")]
+async fn list_docs(userid: UserId, conn: MainDbConn
+    , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool) -> DRResult<Json<Vec<DocumentInfo>>>{
+  
+    let vdocs= conn.run(move |c| {
+        let mut query = docs::table.into_boxed();
+        if let Some (real_name) = name {
+            query = query.filter(docs::name.eq(real_name));
+        }
+        if owner {
+            query = query.filter(docs::owner.eq(userid.0));
+        }
+        let real_order=order.unwrap_or_else(|| DocumentOrder::Recent);
+        query = match real_order {
+            DocumentOrder::Recent => query.order(docs::created.desc()),
+            DocumentOrder::Name => query.order(docs::name.asc()),
+        };
+
+        let real_limit=limit.unwrap_or_else(|| 10);
+
+        query
+                .limit(real_limit as i64)
+                .select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size))
+                .load::<DocumentInfo>(c)
+        }).await?;
+    println!("length: {}",vdocs.len());
+    println!("vdocs: {:?}",vdocs);
+    
+    Ok(Json(vdocs))
+}
+
+#[derive(Debug, PartialEq, FromFormField)]
+enum DocumentOrder {
+    Recent,
+    Name,
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![upload_doc, get_doc, delete_doc]
+    routes![upload_doc, get_doc, delete_doc, list_docs]
 }

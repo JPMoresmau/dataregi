@@ -1,21 +1,20 @@
 mod common;
 
-use dataregi::model::Document;
+use dataregi::model::{Document,DocumentInfo};
 use std::fs;
 use common::{setup,with_test_login};
 use rocket::http::{ContentType, Status, Header};
 use uuid::Uuid;
+use rocket::local::blocking::Client;
+use serial_test::serial;
 
-#[test]
-fn upload_get_delete() {
-    let client= setup();
-
-    // upload doc
-    let file = fs::read("test_data/1sheet1cell.ods").unwrap();
+fn upload(client: &Client, path: &str) -> Uuid {
+    let file = fs::read(path).unwrap();
     let mut cnt=vec![];
 
+
     cnt.extend("-----------------------------3511489321811197009899980000\r\n".as_bytes());    
-    cnt.extend("Content-Disposition: form-data; name=\"files\"; filename=\"1sheet1cell.ods\"\r\n".as_bytes());
+    cnt.extend(format!("Content-Disposition: form-data; name=\"files\"; filename=\"{}\"\r\n",path).as_bytes());
     //cnt.extend("Content-Transfer-Encoding: binary\r\n".as_bytes());
     cnt.extend("Content-Type: application/vnd.oasis.opendocument.spreadsheet\r\n\r\n".as_bytes());
     cnt.extend(&file);
@@ -34,38 +33,150 @@ fn upload_get_delete() {
     let uuids:Vec<Uuid> = response.into_json().unwrap(); 
 
     assert_eq!(uuids.len(),1);
-    
+    uuids[0]
+}
+
+fn delete(client: &Client, uuids: &[Uuid]) {
+    for uuid in uuids.iter(){
+        let response= with_test_login(client.delete(format!("/docs/{}",uuid)), 1).dispatch();
+        assert_eq!(response.status(),Status::NoContent);
+    }
+}
+
+#[test]
+#[serial]
+fn upload_get_delete() {
+    let client= setup();
+
+    // upload doc
+    let file = fs::read("test_data/1sheet1cell.ods").unwrap();
+    let uuid = upload(&client, "test_data/1sheet1cell.ods");
+   
     // read doc again
-    let response= with_test_login(client.get(format!("/docs/{}",uuids[0])), 1).dispatch();
+    let response= with_test_login(client.get(format!("/docs/{}",uuid)), 1).dispatch();
     assert_eq!(response.status(),Status::Ok);
     assert_eq!(response.content_type(), Some(ContentType::JSON));
     let doc:Document = response.into_json().unwrap(); 
 
-    assert_eq!(uuids[0],doc.id);
+    assert_eq!(uuid,doc.id);
     assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb31",doc.owner.to_string());
     assert_eq!(file,doc.data);
     assert_eq!(file.len() as i64, doc.size);
 
     // read as another user, not found
-    let response= with_test_login(client.get(format!("/docs/{}",uuids[0])), 2).dispatch();
+    let response= with_test_login(client.get(format!("/docs/{}",uuid)), 2).dispatch();
     assert_eq!(response.status(),Status::NotFound);
 
     // delete as another user, no error but no effect
-    let response= with_test_login(client.delete(format!("/docs/{}",uuids[0])), 2).dispatch();
+    let response= with_test_login(client.delete(format!("/docs/{}",uuid)), 2).dispatch();
     assert_eq!(response.status(),Status::NoContent);
 
     // still there
-    let response= with_test_login(client.get(format!("/docs/{}",uuids[0])), 1).dispatch();
+    let response= with_test_login(client.get(format!("/docs/{}",uuid)), 1).dispatch();
     assert_eq!(response.status(),Status::Ok);
     assert_eq!(response.content_type(), Some(ContentType::JSON));
 
     // delete
-    let response= with_test_login(client.delete(format!("/docs/{}",uuids[0])), 1).dispatch();
+    let response= with_test_login(client.delete(format!("/docs/{}",uuid)), 1).dispatch();
     assert_eq!(response.status(),Status::NoContent);
 
     // not here anymore
-    let response= with_test_login(client.get(format!("/docs/{}",uuids[0])), 1).dispatch();
+    let response= with_test_login(client.get(format!("/docs/{}",uuid)), 1).dispatch();
     assert_eq!(response.status(),Status::NotFound);
-    let response= with_test_login(client.get(format!("/docs/{}",uuids[0])), 2).dispatch();
+    let response= with_test_login(client.get(format!("/docs/{}",uuid)), 2).dispatch();
     assert_eq!(response.status(),Status::NotFound);
+}
+
+#[test]
+#[serial]
+fn list(){
+    let client= setup();
+
+    let response= with_test_login(client.get("/docs/"), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
+
+    assert_eq!(0,docs.len());
+
+    let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
+    let uuid2 = upload(&client, "test_data/1sheet1row.ods");
+    let uuid3 = upload(&client, "test_data/1sheet1col.ods");
+
+    let response= with_test_login(client.get("/docs/"), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
+
+    assert_eq!(3,docs.len());
+
+    let doci1=&docs[0];
+    let doci2=&docs[1];
+    let doci3=&docs[2];
+
+    assert_eq!(doci1.id,uuid3);
+    assert_eq!(doci2.id,uuid2);
+    assert_eq!(doci3.id,uuid1);
+
+    assert_eq!(doci1.name,"1sheet1col.ods");
+    assert_eq!(doci2.name,"1sheet1row.ods");
+    assert_eq!(doci3.name,"1sheet1cell.ods");
+
+    let response= with_test_login(client.get("/docs?limit=2"), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
+
+    assert_eq!(2,docs.len());
+
+    let doci1=&docs[0];
+    let doci2=&docs[1];
+   
+    assert_eq!(doci1.id,uuid3);
+    assert_eq!(doci2.id,uuid2);
+   
+    assert_eq!(doci1.name,"1sheet1col.ods");
+    assert_eq!(doci2.name,"1sheet1row.ods");
+   
+    let response= with_test_login(client.get("/docs?limit=2&order=recent"), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
+
+    assert_eq!(2,docs.len());
+
+    let doci1=&docs[0];
+    let doci2=&docs[1];
+   
+    assert_eq!(doci1.id,uuid3);
+    assert_eq!(doci2.id,uuid2);
+   
+    assert_eq!(doci1.name,"1sheet1col.ods");
+    assert_eq!(doci2.name,"1sheet1row.ods");
+   
+
+    let response= with_test_login(client.get("/docs?limit=2&order=name"), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
+
+    assert_eq!(2,docs.len());
+
+    let doci1=&docs[0];
+    let doci2=&docs[1];
+   
+    assert_eq!(doci1.id,uuid1);
+    assert_eq!(doci2.id,uuid3);
+   
+    assert_eq!(doci1.name,"1sheet1cell.ods");
+    assert_eq!(doci2.name,"1sheet1col.ods");
+
+    delete(&client, &vec![uuid1,uuid2,uuid3]);
+
+    let response= with_test_login(client.get("/docs/"), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
+
+    assert_eq!(0,docs.len());
 }

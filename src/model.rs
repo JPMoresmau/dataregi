@@ -3,7 +3,7 @@ use chrono::{DateTime,Utc};
 use rocket::serde::{Deserialize, Serialize};
 use crate::schema::*;
 
-#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize)]
+#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug)]
 pub struct User {
     pub id: Uuid,
     pub email: String,
@@ -34,7 +34,7 @@ impl User {
     }
 }
 
-#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize)]
+#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug)]
 pub struct Document {
     pub id: Uuid,
     pub name: String,
@@ -44,4 +44,14 @@ pub struct Document {
     pub size: i64,
     pub data: Vec<u8>,
     pub hash: Option<String>
+}
+
+#[derive(Queryable, Deserialize, Serialize, Debug)]
+pub struct DocumentInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub created: DateTime<Utc>,
+    pub owner: Uuid,
+    pub mime: Option<String>,
+    pub size: i64,
 }

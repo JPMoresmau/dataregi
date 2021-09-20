@@ -21,3 +21,6 @@ diesel_migrations = "1.4"
 uuid = { version = "0.8.2", features= ["serde", "v4"] }
 chrono = "0.4.19"
 figment = "0.10.6"
+
+[dev-dependencies] 
+serial_test = "0.5.1"
