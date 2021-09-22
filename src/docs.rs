@@ -96,14 +96,18 @@ async fn delete_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Sta
     
 }
 
-#[get("/?<name>&<order>&<limit>&<owner>")]
+#[get("/?<name>&<order>&<limit>&<owner>&<offset>")]
 async fn list_docs(userid: UserId, conn: MainDbConn
-    , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool) -> DRResult<Json<Vec<DocumentInfo>>>{
+    , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool, offset: Option<usize>) -> DRResult<Json<Vec<DocumentInfo>>>{
   
     let vdocs= conn.run(move |c| {
         let mut query = docs::table.into_boxed();
         if let Some (real_name) = name {
-            query = query.filter(docs::name.eq(real_name));
+            if real_name.contains('*'){
+                query = query.filter(docs::name.like(real_name.replace("*","%")));
+            } else {
+                query = query.filter(docs::name.eq(real_name));
+            }
         }
         if owner {
             query = query.filter(docs::owner.eq(userid.0));
@@ -115,9 +119,11 @@ async fn list_docs(userid: UserId, conn: MainDbConn
         };
 
         let real_limit=limit.unwrap_or_else(|| 10);
+        let real_offset=offset.unwrap_or_else(|| 0);
 
         query
                 .limit(real_limit as i64)
+                .offset(real_offset as i64)
                 .select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size))
                 .load::<DocumentInfo>(c)
         }).await?;
