@@ -98,7 +98,7 @@ async fn delete_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Sta
 
 #[get("/?<name>&<order>&<limit>&<owner>&<offset>")]
 async fn list_docs(userid: UserId, conn: MainDbConn
-    , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool, offset: Option<usize>) -> DRResult<Json<Vec<DocumentInfo>>>{
+    , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool, offset: Option<i64>) -> DRResult<Json<Vec<DocumentInfo>>>{
   
     let vdocs= conn.run(move |c| {
         let mut query = docs::table.into_boxed();
@@ -123,7 +123,7 @@ async fn list_docs(userid: UserId, conn: MainDbConn
 
         query
                 .limit(real_limit as i64)
-                .offset(real_offset as i64)
+                .offset(real_offset)
                 .select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size))
                 .load::<DocumentInfo>(c)
         }).await?;
@@ -133,6 +133,32 @@ async fn list_docs(userid: UserId, conn: MainDbConn
     Ok(Json(vdocs))
 }
 
+/// count documents
+#[get("/count?<name>&<owner>")]
+async fn count_docs(userid: UserId, conn: MainDbConn
+    , name: Option<String>, owner: bool) -> DRResult<Json<i64>>{
+  
+    let cnt= conn.run(move |c| {
+        let mut query = docs::table.into_boxed();
+        if let Some (real_name) = name {
+            if real_name.contains('*'){
+                query = query.filter(docs::name.like(real_name.replace("*","%")));
+            } else {
+                query = query.filter(docs::name.eq(real_name));
+            }
+        }
+        if owner {
+            query = query.filter(docs::owner.eq(userid.0));
+        }
+
+        query
+            .count()
+            .get_result(c)
+        }).await?;
+   
+    Ok(Json(cnt))
+}
+
 #[derive(Debug, PartialEq, FromFormField)]
 enum DocumentOrder {
     Recent,
@@ -140,5 +166,5 @@ enum DocumentOrder {
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![upload_doc, get_doc, delete_doc, list_docs]
+    routes![upload_doc, get_doc, delete_doc, list_docs, count_docs]
 }

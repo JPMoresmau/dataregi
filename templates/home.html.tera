@@ -23,34 +23,35 @@
 
     <div class="hero fullscreen">
         <div class="hero-body u-center">
-            <div class="w-90" style="position: relative">
+            <div class="w-90" style="position: relative" id="tableRoot">
                 <div class="row">
                     <div class="col-12" style="padding: 2rem;">
                         <h1>Manage all the spreadsheets floating around your organization!</h1>
                     </div>
-                    <div class="col-3">
-                    </div>
-                    <div class="col-3 form-group">
+                </div>
+                <div class="row">
+                    <div class="col-3 offset-3 form-group">
                             <input type="file" id="uploadInput" placeholder="Choose a spreadsheet." multiple style="display:none;"/>
                             <button class="form-group-btn btn-link" id="fileSelect">Select some files</button>
                     </div>
                     <div class="col-3 form-group">
                             <button id="uploadButton" class="form-group-btn btn-link" disabled>Upload</button>
                     </div>
-                    <div class="col-3">
-                    </div>
-                    <div class="col-3">
-                    </div>
-                    <div class="col-6">
+                </div>
+                <div class="row">
+                    <div class="col-6 offset-3">
                         Selected files: <span id="fileNum">0</span><br/>
                         Total size: <span id="fileSize">0</span>
                     </div>
-                    <div class="col-3">
-                    </div>
-                    <div class="col-3">
-                    </div>
-                    <div class="col-6">
+                </div>
+                <div class="row">
+                    <div class="col-6 offset-3">
                         {% include "toast" %}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6 offset-3">
+                       <h6 id="docCountHeader"></h6>
                     </div>
                 </div>
             </div>
@@ -87,7 +88,7 @@
         }, false);
 
         async function uploadFiles(){
-            var data = new FormData();
+            let data = new FormData();
             for (const file of uploadInput.files) {
               data.append('files',file,file.name);
             }
@@ -97,10 +98,67 @@
             });
             response.json().then(data=>{
                 showToast(data);
+                uploadInput.value=null;
+                updateSize.call(uploadInput);
             });
         }
 
         uploadButton.addEventListener("click", uploadFiles, false);
+
+        const docCount = 0;
+
+        async function loadCount(){
+            const response = await fetch('/docs/count', {
+                method: 'GET'
+            });
+            return response.json();
+        }
+
+        async function loadList(offset){
+            const response = await fetch('/docs?limit=10&order=recent&offset='+offset, {
+                    method: 'GET'
+                });
+            response.json().then(data=>{
+                //console.log(data);
+                for (let docLine of document.getElementsByClassName("docLine")){
+                    docLine.remove();
+                }
+                let tableRoot=document.getElementById("tableRoot");
+                
+                for (const docInfo of data){
+                    let docLine=document.createElement("div");
+                    docLine.className="row docLine";
+                    let docItem=document.createElement("div");
+                    docItem.className="col-3 offset-3";
+                    docItem.textContent=docInfo['name'];
+                    docLine.appendChild(docItem);
+                    let details=document.createElement("div");
+                    details.className="col-3";
+                    details.textContent=new Date(docInfo['created']).toLocaleString();
+                    docLine.appendChild(details);
+                    tableRoot.appendChild(docLine);
+                }
+            });
+        }
+
+
+        function showDocCount(docCount){
+            let txt="You have no documents yet";
+            if (docCount==1){
+                txt="You have nly 1 document";
+            } else if (docCount>1){
+                txt="You have " +docCount.toString()+" documents";
+            }
+            document.getElementById('docCountHeader').textContent=txt;
+        }
+
+        (async()=>{
+            loadCount().then(data=>{
+                this.docCount=data;
+                showDocCount(this.docCount);
+                loadList(0);
+            });
+        })();
     </script>
 
 </body>
