@@ -103,7 +103,7 @@ async fn send_login_email(
             config.callback_name, config.port, token
         )
     };
-
+    println!("Sending link: {}",link);
     send_email_ses(
         &client,
         "login@dataregi.com",
