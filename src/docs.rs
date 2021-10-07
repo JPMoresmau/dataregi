@@ -96,15 +96,23 @@ async fn delete_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Sta
     
 }
 
-#[get("/?<name>&<order>&<limit>&<owner>&<offset>")]
+#[get("/?<name>&<order>&<limit>&<owner>&<offset>&<distinct>")]
 async fn list_docs(userid: UserId, conn: MainDbConn
-    , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool, offset: Option<i64>) -> DRResult<Json<Vec<DocumentInfo>>>{
+    , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool, offset: Option<i64>
+    , distinct: bool) -> DRResult<Json<Vec<DocumentInfo>>>{
   
     let vdocs= conn.run(move |c| {
-        let mut query = docs::table.into_boxed();
+        let mut query = 
+            if distinct{
+                docs::table.distinct_on(docs::name).into_boxed()
+            } else {
+                docs::table.into_boxed()
+            }
+            ;
+       
         if let Some (real_name) = name {
             if real_name.contains('*'){
-                query = query.filter(docs::name.like(real_name.replace("*","%")));
+                query = query.filter(docs::name.ilike(real_name.replace("*","%")));
             } else {
                 query = query.filter(docs::name.eq(real_name));
             }
@@ -113,36 +121,69 @@ async fn list_docs(userid: UserId, conn: MainDbConn
             query = query.filter(docs::owner.eq(userid.0));
         }
         let real_order=order.unwrap_or_else(|| DocumentOrder::Recent);
-        query = match real_order {
-            DocumentOrder::Recent => query.order(docs::created.desc()),
-            DocumentOrder::Name => query.order(docs::name.asc()),
-        };
+        query =  
+            if distinct{
+                query.order((docs::name,docs::created.desc()))
+            } else {
+                match real_order {
+                    DocumentOrder::Recent => query.order(docs::created.desc()),
+                    DocumentOrder::Name => query.order(docs::name.asc()),
+                }
+            };
 
         let real_limit=limit.unwrap_or_else(|| 10);
         let real_offset=offset.unwrap_or_else(|| 0);
 
-        query
-                .limit(real_limit as i64)
+        let query = query.select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size));
+        
+        if distinct {
+            let mut query2 = query.sub_select();
+            query2 = match real_order {
+                DocumentOrder::Recent => query2.order("created desc"),
+                DocumentOrder::Name => query2.order("name asc"),
+            };
+            query2 = query2.limit(real_limit as i64)
+                .offset(real_offset);
+            println!("{}",diesel::debug_query(&query2));
+            query2.load::<DocumentInfo>(c)
+         } else {
+            query.limit(real_limit as i64)
                 .offset(real_offset)
-                .select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size))
                 .load::<DocumentInfo>(c)
+         }
+
+        
         }).await?;
-    println!("length: {}",vdocs.len());
-    println!("vdocs: {:?}",vdocs);
+    //println!("length: {}",vdocs.len());
+    //println!("vdocs: {:?}",vdocs);
     
     Ok(Json(vdocs))
 }
 
+/*
+select count(distinct name) from documents
+
+select * from (
+select distinct on (name) * from documents order by name, created desc
+	) t0 order by created desc
+*/
+
 /// count documents
-#[get("/count?<name>&<owner>")]
+#[get("/count?<name>&<owner>&<distinct>")]
 async fn count_docs(userid: UserId, conn: MainDbConn
-    , name: Option<String>, owner: bool) -> DRResult<Json<i64>>{
+    , name: Option<String>, owner: bool, distinct: bool) -> DRResult<Json<i64>>{
   
     let cnt= conn.run(move |c| {
-        let mut query = docs::table.into_boxed();
+        
+        let mut query =  if distinct{
+            docs::table.distinct().into_boxed()
+        } else {
+            docs::table.into_boxed()
+        };
+
         if let Some (real_name) = name {
             if real_name.contains('*'){
-                query = query.filter(docs::name.like(real_name.replace("*","%")));
+                query = query.filter(docs::name.ilike(real_name.replace("*","%")));
             } else {
                 query = query.filter(docs::name.eq(real_name));
             }
@@ -151,9 +192,40 @@ async fn count_docs(userid: UserId, conn: MainDbConn
             query = query.filter(docs::owner.eq(userid.0));
         }
 
-        query
-            .count()
-            .get_result(c)
+        if distinct {
+            /*let query2=query.select(docs::name);
+            let debug = diesel::debug_query(&query2);
+            println!("Debug:{}",debug);
+            diesel::sql_query(format!("select count(*) as count from ({}) t0",debug.to_string())).get_result::<GenericCount>(c).map(|gc| gc.count)*/
+            query.select(docs::name).count_sub_select().get_result(c)
+        } else {
+            query.select(diesel::dsl::count(docs::name)).get_result(c)
+        }
+        
+        /*let mut query = String::new();
+        if distinct {
+            query.push_str("select count(*) as count from ( select name from documents ");
+        } else {
+            query.push_str("select count(*) as count from documents ");
+        }
+        if let Some (real_name) = name {
+            if real_name.contains('*'){
+                query.push_str(" name ilike $1");
+                //real_name.replace("*","%")));
+            } else {
+                query.push_str(" name ilike $1");
+            }
+        }
+        if owner {
+            query.push_str("owner=$1");
+        }
+        
+        if distinct {
+            query.push_str(") t0");
+        }
+        diesel::sql_query(query).bind().get_result::<GenericCount>(c).map(|gc| gc.count)*/
+        //query
+        //    .get_result(c)
         }).await?;
    
     Ok(Json(cnt))
@@ -164,6 +236,8 @@ enum DocumentOrder {
     Recent,
     Name,
 }
+
+
 
 pub fn routes() -> Vec<Route> {
     routes![upload_doc, get_doc, delete_doc, list_docs, count_docs]

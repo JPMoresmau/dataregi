@@ -2,6 +2,11 @@ use rocket::serde::{Deserialize, Serialize};
 
 use std::io::Error as IOError;
 use diesel::result::Error as DieselError;
+use diesel::pg::Pg;
+use diesel::prelude::*;
+use diesel::query_builder::*;
+use diesel::sql_types::BigInt;
+
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{Responder,Result};
@@ -131,3 +136,123 @@ impl From<uuid::Error> for DRError {
 }
 
 pub type DRResult<T> = std::result::Result<T, DRError>;
+
+
+#[derive(Debug, Clone, Copy, QueryId)]
+pub struct CountedSubSelect<T> {
+    query: T
+}
+
+impl<T: Query> Query for CountedSubSelect<T> {
+    type SqlType = BigInt;
+}
+
+impl<T> RunQueryDsl<PgConnection> for CountedSubSelect<T> {}
+
+impl<T> QueryFragment<Pg> for CountedSubSelect<T>
+where
+    T: QueryFragment<Pg>,
+{
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("SELECT COUNT(*) FROM (");
+        self.query.walk_ast(out.reborrow())?;
+        out.push_sql(") t");
+        Ok(())
+    }
+}
+
+pub trait CountSubSelect: Sized {
+    fn count_sub_select(self) -> CountedSubSelect<Self>;
+}
+
+impl<T> CountSubSelect for T {
+    fn count_sub_select(self) -> CountedSubSelect<Self> {
+        CountedSubSelect {
+            query: self,
+        }
+    }
+}
+
+#[derive(Debug, Clone, QueryId)]
+pub struct SelectedSubSelect<T> {
+    query: T,
+    limit: i64,
+    offset: i64,
+    order: String,
+}
+
+impl <T> SelectedSubSelect<T> {
+    pub fn limit(self,limit: i64) -> Self {
+        SelectedSubSelect{
+            query: self.query,
+            limit,
+            offset: self.offset,
+            order: self.order,
+        }
+    }
+
+    pub fn offset(self,offset: i64) -> Self {
+        SelectedSubSelect{
+            query: self.query,
+            limit: self.limit,
+            offset,
+            order: self.order,
+        }
+    }
+
+    pub fn order<S: Into<String>>(self, e:S) -> Self {
+        SelectedSubSelect{
+            query: self.query,
+            limit: self.limit,
+            offset: self.offset,
+            order: e.into(),
+        }
+    }
+}
+
+impl<T: Query> Query for SelectedSubSelect<T> {
+    type SqlType = T::SqlType;
+}
+
+
+
+impl<T> RunQueryDsl<PgConnection> for SelectedSubSelect<T> {}
+
+impl<T> QueryFragment<Pg> for SelectedSubSelect<T>
+where
+    T: QueryFragment<Pg>,
+{
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("SELECT * FROM (");
+        self.query.walk_ast(out.reborrow())?;
+        out.push_sql(") t");
+        if !self.order.is_empty(){
+            out.push_sql(&format!(" ORDER BY {}",self.order))
+        }
+        if self.limit>0{
+            out.push_sql(&format!(" LIMIT {}",self.limit))
+        }
+        if self.offset>0{
+            out.push_sql(&format!(" OFFSET {}",self.offset))
+        }
+
+        Ok(())
+    }
+}
+
+pub trait SelectSubSelect: Sized {
+    fn sub_select(self) -> SelectedSubSelect<Self>;
+}
+
+impl<T> SelectSubSelect for T {
+    fn sub_select(self) -> SelectedSubSelect<Self> {
+        SelectedSubSelect {
+            query: self,
+            limit: 0,
+            offset: 0,
+            order: String::new()
+        }
+    }
+}
+
+

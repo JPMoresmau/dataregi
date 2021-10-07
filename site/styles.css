@@ -22,3 +22,7 @@ html {
 #hero-body {
     background-color: rgba(0, 0, 0, 0.2);
 }
+
+.docLine {
+    border-bottom: #4643e2 1px solid;
+}

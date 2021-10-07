@@ -45,30 +45,19 @@
                     </div>
                 </div>
                 <div class="row">
-                    <div class="col-6 offset-3">
+                    <div class="col-12">
                         {% include "toast" %}
                     </div>
                 </div>
                 <div class="row" id="docHeaderRow">
-                    <div class="col-6 offset-3">
+                    <div class="col-6">
                        <h6 id="docCountHeader"></h6>
                     </div>
+                    <div class="col-6">
+                        <input type="search" placeholder="Search for documents" id="searchDocs"/>
+                     </div>
                 </div>
-                <div class="row">
-                    <div class="col-6 offset-3" >
-                        <div class="pagination" style="justify-content: center;">
-                            <div class="pagination-item short" id="previousDocPage"><a href="javascript:previousDocPage()" >Prev</a></div>
-                            <div class="pagination-item short selected"><a href="!#" class="disabled" id="currentDocPage">1</a></div> 
-                            
-                            <!--<div class="pagination-item short"><a href="!#">2</a></div>
-                            <div class="pagination-item short"><a href="!#">3</a></div>
-                            <div class="pagination-item short"><a href="!#">4</a></div>
-                            <div class="pagination-item short"><a>...</a></div>
-                            <div class="pagination-item short"><a href="!#">13</a></div>-->
-                            <div class="pagination-item short" id="nextDocPage"><a href="javascript:nextDocPage()">Next</a></div>
-                        </div>
-                    </div>
-                </div>
+                {% include "doc_list" %}
             </div>
         </div>
     </div>
@@ -122,153 +111,21 @@
 
         uploadButton.addEventListener("click", uploadFiles, false);
 
-        const pageSize=10;
-        let currentPage=0; 
-        let docCount = 0;
-
-        async function loadCount(){
-            const response = await fetch('/docs/count', {
-                method: 'GET'
-            });
-            return response.json();
-        }
-
-        async function loadList(offset){
-            const response = await fetch('/docs?limit='+pageSize+'&order=recent&offset='+offset, {
-                    method: 'GET'
-                });
-            return response.json().then(data=>{
-                //  console.log(data);
-                /*for (let docLine of document.getElementsByClassName("docLine")){
-                    docLine.remove();
-                }*/
-                document.querySelectorAll(".docLine").forEach(el => el.remove());
-                let docHeaderRow=document.getElementById("docHeaderRow");
-                
-                for (const docInfo of data){
-                    let docLine=document.createElement("div");
-                    docLine.className="row docLine";
-                    let docItem=document.createElement("div");
-                    docItem.className="col-3 offset-3";
-                    docItem.textContent=docInfo['name'];
-                    docLine.appendChild(docItem);
-                    let details=document.createElement("div");
-                    details.className="col-3";
-                    details.style.textAlign="right";
-                    details.textContent=new Date(docInfo['created']).toLocaleString();
-                    docLine.appendChild(details);
-                    //tableRoot.appendChild(docLine);
-                    docHeaderRow.parentNode.insertBefore(docLine, docHeaderRow.nextSibling);
-                    docHeaderRow=docLine;
-                }
-            });
-        }
-
-        function updatePagination(page){
-            currentPage=page;
-            console.log("currentPage",currentPage,"docCount",docCount,"pageSize",pageSize);
-            const prev=document.getElementById("previousDocPage");
-            const prevA=prev.getElementsByTagName("a")[0];
-            if (currentPage>0){
-                prev.classList.remove("disabled");
-                prevA.classList.remove("disabled");
-            } else {
-                prev.classList.add("disabled");
-                prevA.classList.add("disabled");
-            }
-            const next=document.getElementById("nextDocPage");
-            const nextA=next.getElementsByTagName("a")[0];
-            const lastPage=Math.ceil(docCount/pageSize)-1;
-            if (currentPage<lastPage){
-                next.classList.remove("disabled");
-                nextA.classList.remove("disabled");
-            } else {
-                next.classList.add("disabled");
-                nextA.classList.add("disabled");
-            }
-            
-            const curr=document.getElementById("currentDocPage");
-            curr.innerText=(currentPage+1).toString();
-
-            document.querySelectorAll(".otherDocPage").forEach(el => el.remove());
-            if (currentPage>0){
-                const prevIndexedPage=document.createElement("div");
-                prevIndexedPage.className="pagination-item short otherDocPage";
-                const prevIndexedPageA=document.createElement("a");
-                prevIndexedPageA.href="javascript:goToDocPage(0)";
-                prevIndexedPageA.innerText="1";
-                prevIndexedPage.appendChild(prevIndexedPageA);
-                prev.parentNode.insertBefore(prevIndexedPage,prev.nextSibling);
-                if (currentPage>1){
-                    const ellIndexedPage=document.createElement("div");
-                    ellIndexedPage.className="pagination-item short otherDocPage disabled";
-                    const ellIndexedPageA=document.createElement("a");
-                    ellIndexedPageA.className="disabled";
-                    ellIndexedPage.appendChild(ellIndexedPageA);
-                    ellIndexedPageA.href="#!";
-                    ellIndexedPageA.innerText="...";
-                    prev.parentNode.insertBefore(ellIndexedPage,prevIndexedPage.nextSibling);
-                }
-            }
-            if (currentPage<lastPage){
-                const nextIndexedPage=document.createElement("div");
-                nextIndexedPage.className="pagination-item short otherDocPage";
-                const nextIndexedPageA=document.createElement("a");
-                nextIndexedPageA.href="javascript:goToDocPage("+lastPage+")";
-                nextIndexedPageA.innerText=(lastPage+1).toString();
-                nextIndexedPage.appendChild(nextIndexedPageA);
-                next.parentNode.insertBefore(nextIndexedPage,next);
-                if (currentPage<lastPage-1){
-                    const ellIndexedPage=document.createElement("div");
-                    ellIndexedPage.className="pagination-item short otherDocPage disabled";
-                    const ellIndexedPageA=document.createElement("a");
-                    ellIndexedPageA.className="disabled";
-                    ellIndexedPage.appendChild(ellIndexedPageA);
-                    ellIndexedPageA.href="#!";
-                    ellIndexedPageA.innerText="...";
-                    next.parentNode.insertBefore(ellIndexedPage,nextIndexedPage);
-                }
-            }
-        }
-
-       
-
-        function goToDocPage(page){
-            loadList(page*pageSize).then(updatePagination(page));
-        }
-
-
-        function previousDocPage(){
-            if (currentPage>0){
-                goToDocPage(currentPage-1);
-            }
-        }
-
-        function nextDocPage(){
-            if (currentPage<Math.ceil(docCount/pageSize)){
-                goToDocPage(currentPage+1);
-            }
-        }
-
         function showDocCount(docCount){
             let txt="You have no documents yet";
             if (docCount==1){
                 txt="You have only 1 document";
             } else if (docCount>1){
-                txt="You have " +docCount.toString()+" documents";
+                txt="You have " +docCount.toString()+" documents (uniquely named)";
             }
+            if (search.length>0){
+                txt+=" matching your query";
+            }
+    
             document.getElementById('docCountHeader').textContent=txt;
         }
 
-        async function resetDocList(){
-            loadCount().then(data=>{
-                docCount=data;
-                showDocCount(docCount);
-                loadList(0).then(updatePagination(0));
-            });
-        }
 
-        resetDocList();
     </script>
 
 </body>

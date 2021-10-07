@@ -2,6 +2,7 @@ use uuid::Uuid;
 use chrono::{DateTime,Utc};
 use rocket::serde::{Deserialize, Serialize};
 use crate::schema::*;
+use diesel::sql_types::BigInt;
 
 #[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug)]
 pub struct User {
@@ -54,4 +55,10 @@ pub struct DocumentInfo {
     pub owner: Uuid,
     pub mime: Option<String>,
     pub size: i64,
+}
+
+#[derive(QueryableByName)]
+pub struct GenericCount {
+    #[sql_type = "BigInt"]
+    pub count: i64
 }

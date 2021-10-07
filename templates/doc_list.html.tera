@@ -1,0 +1,198 @@
+<div class="row">
+    <div class="col-12" >
+        <div class="pagination u-center">
+            <div class="pagination-item short" id="previousDocPage"><a href="javascript:previousDocPage()" >Prev</a></div>
+            <div class="pagination-item short selected"><a href="!#" class="disabled" id="currentDocPage">1</a></div> 
+
+            <div class="pagination-item short" id="nextDocPage"><a href="javascript:nextDocPage()">Next</a></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const pageSize=10;
+    let currentPage=0; 
+    let docCount = 0;
+    
+    const name='{% if documentName %}{{ documentName }}{% endif %}';
+    const distinct='{% if documentName %}{{ distinct }}{% else %}true{% endif %}';
+    const owner='{% if owner %}{{ owner }}{% else %}true{% endif %}'
+
+    let timeout = null;
+    const searchDocs=document.getElementById("searchDocs");
+    let search=searchDocs!=null?searchDocs.value:'';
+
+    async function loadCount(){
+        let query='/api/docs/count';
+        let queryObj={'owner':owner};
+        
+        if (search.length>0){
+            queryObj['name']='*'+search+'*';
+            needAmp=true;
+        } else if (name.length>0){
+            queryObj['name']=name;
+        }
+        if (distinct=='true'){
+            queryObj['distinct']='true';
+        }
+        
+        var queryString = Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
+        if (queryString){
+            query+='?'+queryString;
+        }
+
+        const response = await fetch(query, {
+            method: 'GET'
+        });
+        return response.json();
+    }
+
+    async function loadList(offset){
+        let queryObj={'owner':owner,'limit':pageSize,'offset':offset};
+        
+        if (search.length>0){
+            queryObj['name']='*'+search+'*';
+            needAmp=true;
+        } else if (name.length>0){
+            queryObj['name']=name;
+        }
+        if (distinct=='true'){
+            queryObj['distinct']='true';
+        }
+
+        let query='/api/docs?'+Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
+
+        const response = await fetch(query, {
+                method: 'GET'
+            });
+        return response.json().then(data=>{
+            document.querySelectorAll(".docLine").forEach(el => el.remove());
+            let docHeaderRow=document.getElementById("docHeaderRow");
+            
+            for (const docInfo of data){
+                let docLine=document.createElement("div");
+                docLine.className="row docLine";
+                let docItem=document.createElement("div");
+                docItem.className="col-9";
+                let a=document.createElement("a");
+                a.textContent=docInfo['name'];
+                a.href="document?id="+encodeURIComponent(docInfo['id']);
+                docItem.appendChild(a);
+                docLine.appendChild(docItem);
+                let details=document.createElement("div");
+                details.className="col-3";
+                details.style.textAlign="right";
+                details.textContent=new Date(docInfo['created']).toLocaleString();
+                docLine.appendChild(details);
+                //tableRoot.appendChild(docLine);
+                docHeaderRow.parentNode.insertBefore(docLine, docHeaderRow.nextSibling);
+                docHeaderRow=docLine;
+            }
+        });
+    }
+
+    function updatePagination(page){
+        currentPage=page;
+        //console.log("currentPage",currentPage,"docCount",docCount,"pageSize",pageSize);
+        const prev=document.getElementById("previousDocPage");
+        const prevA=prev.getElementsByTagName("a")[0];
+        if (currentPage>0){
+            prev.classList.remove("disabled");
+            prevA.classList.remove("disabled");
+        } else {
+            prev.classList.add("disabled");
+            prevA.classList.add("disabled");
+        }
+        const next=document.getElementById("nextDocPage");
+        const nextA=next.getElementsByTagName("a")[0];
+        const lastPage=Math.ceil(docCount/pageSize)-1;
+        if (currentPage<lastPage){
+            next.classList.remove("disabled");
+            nextA.classList.remove("disabled");
+        } else {
+            next.classList.add("disabled");
+            nextA.classList.add("disabled");
+        }
+        
+        const curr=document.getElementById("currentDocPage");
+        curr.innerText=(currentPage+1).toString();
+
+        document.querySelectorAll(".otherDocPage").forEach(el => el.remove());
+        if (currentPage>0){
+            const prevIndexedPage=document.createElement("div");
+            prevIndexedPage.className="pagination-item short otherDocPage";
+            const prevIndexedPageA=document.createElement("a");
+            prevIndexedPageA.href="javascript:goToDocPage(0)";
+            prevIndexedPageA.innerText="1";
+            prevIndexedPage.appendChild(prevIndexedPageA);
+            prev.parentNode.insertBefore(prevIndexedPage,prev.nextSibling);
+            if (currentPage>1){
+                const ellIndexedPage=document.createElement("div");
+                ellIndexedPage.className="pagination-item short otherDocPage disabled";
+                const ellIndexedPageA=document.createElement("a");
+                ellIndexedPageA.className="disabled";
+                ellIndexedPage.appendChild(ellIndexedPageA);
+                ellIndexedPageA.href="#!";
+                ellIndexedPageA.innerText="...";
+                prev.parentNode.insertBefore(ellIndexedPage,prevIndexedPage.nextSibling);
+            }
+        }
+        if (currentPage<lastPage){
+            const nextIndexedPage=document.createElement("div");
+            nextIndexedPage.className="pagination-item short otherDocPage";
+            const nextIndexedPageA=document.createElement("a");
+            nextIndexedPageA.href="javascript:goToDocPage("+lastPage+")";
+            nextIndexedPageA.innerText=(lastPage+1).toString();
+            nextIndexedPage.appendChild(nextIndexedPageA);
+            next.parentNode.insertBefore(nextIndexedPage,next);
+            if (currentPage<lastPage-1){
+                const ellIndexedPage=document.createElement("div");
+                ellIndexedPage.className="pagination-item short otherDocPage disabled";
+                const ellIndexedPageA=document.createElement("a");
+                ellIndexedPageA.className="disabled";
+                ellIndexedPage.appendChild(ellIndexedPageA);
+                ellIndexedPageA.href="#!";
+                ellIndexedPageA.innerText="...";
+                next.parentNode.insertBefore(ellIndexedPage,nextIndexedPage);
+            }
+        }
+    }
+
+    
+
+    function goToDocPage(page){
+        loadList(page*pageSize).then(updatePagination(page));
+    }
+
+
+    function previousDocPage(){
+        if (currentPage>0){
+            goToDocPage(currentPage-1);
+        }
+    }
+
+    function nextDocPage(){
+        if (currentPage<Math.ceil(docCount/pageSize)){
+            goToDocPage(currentPage+1);
+        }
+    }
+
+    async function resetDocList(){
+        loadCount().then(data=>{
+            docCount=data;
+            showDocCount(docCount);
+            loadList(0).then(updatePagination(0));
+        });
+    }
+
+    if (searchDocs!=null){
+        searchDocs.addEventListener("input", function(e){
+            clearTimeout(timeout);
+            timeout = setTimeout(function () {
+                search=searchDocs.value;
+                resetDocList();
+            }, 1000);
+        }, false);
+    }
+    resetDocList();
+</script>

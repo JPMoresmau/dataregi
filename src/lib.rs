@@ -253,7 +253,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
                 logout
             ],
         )
-        .mount("/docs",docs::routes())
+        .mount("/api/docs",docs::routes())
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
         .attach(Template::fairing())
