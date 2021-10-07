@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+    <head>
+    <title id="title">DataRegi</title>
+    {% include "header" %}
+    </head>
+<body>
+
+    {% include "page_header" %}
+    <div class="hero fullscreen">
+        <div class="hero-body u-center">
+            <div class="w-90" style="position: relative" id="tableRoot">
+               
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const doc_id='{{ doc_id }}';
+
+        async function loadDoc(id){
+            if (id){
+                const query="/api/docs/"+encodeURIComponent(id);
+                const response = await fetch(query, {
+                    method: 'GET'
+                })
+                if (!response.ok){
+                    showError(await response.text());
+                } else {
+                    const doc=await response.json();
+                    document.getElementById("title").textContent='DataRegi - '+doc['name'];
+                }
+                
+               
+            } else {
+                showError("No document ID provided");
+            }
+        }
+
+        function showError(err){
+            let errorCell=document.getElementById('errorCell');
+            if (errorCell==null){
+                const errorRow=document.createElement('div');
+                errorRow.className='row';
+                errorCell=document.createElement('div');
+                errorCell.id='errorCell';
+                errorCell.className='col-6 offset-3 text-danger';
+                errorRow.appendChild(errorCell);
+                const root=document.getElementById('tableRoot');
+                root.insertBefore(errorCell,root.firstChild);
+            }
+            errorCell.innerText=err;
+        }
+
+        loadDoc(doc_id);
+        
+    </script>
+
+</body>
+</html>

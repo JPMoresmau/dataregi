@@ -79,7 +79,7 @@ async fn get_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Json<D
         documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0)).load::<Document>(c)
     }).await?;
     match docs.pop(){
-        None => Err(DRError::NotFoundError),
+        None => Err(StructuredError::not_found("Document not found")),
         Some(doc) =>  Ok(Json(doc)),
     }
     

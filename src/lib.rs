@@ -237,6 +237,11 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket
 }
 
+#[get("/document?<id>")]
+pub fn single_doc(userid: UserId,id: &str) -> Template {
+    let ctx = DocumentContext { user_id: &userid.0, doc_id: id };
+    Template::render("doc", &ctx)
+}
 
 pub fn rocket() -> rocket::Rocket<Build> {
     rocket::build()
@@ -250,7 +255,8 @@ pub fn rocket() -> rocket::Rocket<Build> {
                 static_files,
                 send_login_email,
                 login_from_token,
-                logout
+                logout,
+                single_doc,
             ],
         )
         .mount("/api/docs",docs::routes())

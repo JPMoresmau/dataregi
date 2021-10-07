@@ -6,21 +6,8 @@
     </head>
 <body>
 
-    <div class="header header-fixed unselectable header-animated">
-        <div class="header-brand">
-            <div class="nav-item no-hover">
-                <a href="/"><h6 class="title">DataRegi</h6></a>
-            </div>
-        </div>
-        <div class="header-nav">
-            <div class="nav-right">
-                <div class="nav-item text-center">
-                    <a href="/logout">Logout</a>
-                </div>
-            </div>
-        </div>
-    </div>
-
+    {% include "page_header" %}
+    
     <div class="hero fullscreen">
         <div class="hero-body u-center">
             <div class="w-90" style="position: relative" id="tableRoot">

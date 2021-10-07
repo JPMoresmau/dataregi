@@ -7,9 +7,9 @@ use diesel::prelude::*;
 use diesel::query_builder::*;
 use diesel::sql_types::BigInt;
 
-use rocket::http::Status;
+use rocket::http::{ContentType,Status};
 use rocket::request::Request;
-use rocket::response::{Responder,Result};
+use rocket::response::{Responder, Result, Response};
 use rocket_sync_db_pools::database;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -18,6 +18,7 @@ use figment::value::magic::RelativePathBuf;
 use uuid::Uuid;
 use std::fmt;
 use std::error::Error as StdError;
+use rocket::serde::json::Json;
 
 #[derive(Serialize)]
 pub struct IndexContext<'r> {
@@ -31,6 +32,13 @@ pub struct UserContext<'r> {
 }
 
 pub struct UserId(pub Uuid);
+
+#[derive(Serialize)]
+pub struct DocumentContext<'r> {
+    pub user_id: &'r Uuid,
+    pub doc_id: &'r str,
+}
+
 
 #[derive(Deserialize)]
 pub struct LoginEmail<'r> {
@@ -74,68 +82,82 @@ impl Default for EmailTokens {
 #[database("postgres_main")]
 pub struct MainDbConn(diesel::PgConnection);
 
-
-#[derive(Debug)]
-pub enum DRError{
-    DatabaseError(String),
-    IOError(String),
-    UuidError(String),
-    NotFoundError,
+#[derive(Serialize, Debug)]
+pub struct  StructuredError{
+    #[serde(skip_serializing)]
+    status: Status,
+    error_type: DRError,
+    error: String,
 }
 
-impl<'r,'o: 'r> Responder<'r,'o> for DRError {
-    fn respond_to(self, _request: &'r Request<'_>) -> Result<'o> {
+impl StructuredError {
+    pub fn not_found<T:Into<String>>(msg: T) -> Self{
+        StructuredError{status:Status::NotFound,
+            error_type:DRError::NotFoundError,
+            error:msg.into()}
+    }
+}
+
+impl<'r,'o: 'r> Responder<'r,'o> for StructuredError {
+    fn respond_to(self, request: &'r Request<'_>) -> Result<'o> {
         println!("error: {}",self);
-        match self {
-            DRError::NotFoundError=> Err(Status::NotFound),
-            _ => Err(Status::InternalServerError),
-        }
+        
+        Response::build_from(Json(&self).respond_to(request).unwrap())
+            .status(self.status)
+            .header(ContentType::JSON)
+            .ok()
         
     }
 }
 
-impl fmt::Display for DRError {
+
+#[derive(Serialize, Debug)]
+pub enum DRError {
+    DatabaseError,
+    IOError,
+    UuidError,
+    NotFoundError,
+}
+
+
+
+impl fmt::Display for StructuredError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(match self {
-            DRError::DatabaseError(msg)=>msg,
-            DRError::IOError(msg)=>msg,
-            DRError::UuidError(msg)=>msg,
-            DRError::NotFoundError=> "Not Found",
-        })
+        f.write_str(&self.error)
     }
 }
 
-impl StdError for DRError {
+impl StdError for StructuredError {
     fn description(&self) -> &str {
-        match self {
-            DRError::DatabaseError(msg)=>msg,
-            DRError::IOError(msg)=>msg,
-            DRError::UuidError(msg)=>msg,
-            DRError::NotFoundError=> "Not Found",
-        }
-
+        &self.error
     }
 }
 
-impl From<DieselError> for DRError {
+impl From<DieselError> for StructuredError {
     fn from(e: DieselError) -> Self {
-        DRError::DatabaseError(e.to_string())
+        StructuredError{status:Status::InternalServerError,
+            error_type:DRError::DatabaseError,
+            error: e.to_string()}
     }
 }
 
-impl From<IOError> for DRError {
+impl From<IOError> for StructuredError {
     fn from(e: IOError) -> Self {
-        DRError::IOError(e.to_string())
+        StructuredError{status:Status::InternalServerError,
+            error_type:DRError::IOError,
+            error:e.to_string()}
     }
 }
 
-impl From<uuid::Error> for DRError {
+impl From<uuid::Error> for StructuredError {
     fn from(e: uuid::Error) -> Self {
-        DRError::UuidError(e.to_string())
+        StructuredError{status:Status::BadRequest,
+            error_type:DRError::UuidError,
+            error:e.to_string()}
     }
 }
 
-pub type DRResult<T> = std::result::Result<T, DRError>;
+pub type DRResult<T> = std::result::Result<T, StructuredError>;
 
 
 #[derive(Debug, Clone, Copy, QueryId)]
