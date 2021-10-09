@@ -1,9 +1,10 @@
 use rocket::{Route, State};
 use crate::base::*;
-use rocket::http::Status;
+use rocket::http::{ContentType, Status};
 use rocket::serde::json::Json;
 use rocket::form::Form;
 use rocket::fs::TempFile;
+use std::str::FromStr;
 use std::path::PathBuf;
 use std::fs::{read,create_dir_all, remove_file};
 use crate::model::{Document,DocumentInfo};
@@ -85,6 +86,40 @@ async fn get_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Json<D
     
 }
 
+#[get("/<uuid>/info")]
+async fn get_doc_info(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Json<DocumentInfo>>{
+    let real_uuid=Uuid::parse_str(uuid)?;
+  
+    let mut docs=conn.run(move |c| {
+        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0))
+            .select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size))
+            .load::<DocumentInfo>(c)
+    }).await?;
+    match docs.pop(){
+        None => Err(StructuredError::not_found("Document not found")),
+        Some(doc) =>  Ok(Json(doc)),
+    }
+    
+}
+
+#[get("/<uuid>/data")]
+async fn get_doc_data(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Download>{
+    let real_uuid=Uuid::parse_str(uuid)?;
+  
+    let mut docs=conn.run(move |c| {
+        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0))
+            .load::<Document>(c)
+    }).await?;
+    match docs.pop(){
+        None => Err(StructuredError::not_found("Document not found")),
+        Some(doc) =>  Ok(Download{
+            content_type: doc.mime.map(|s| ContentType::from_str(&s).ok()).flatten().unwrap_or_else(|| ContentType::Binary)
+            ,filename: doc.name
+            ,data: doc.data}),
+    }
+    
+}
+
 #[delete("/<uuid>")]
 async fn delete_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Status>{
     let real_uuid=Uuid::parse_str(uuid)?;
@@ -96,10 +131,10 @@ async fn delete_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Sta
     
 }
 
-#[get("/?<name>&<order>&<limit>&<owner>&<offset>&<distinct>")]
+#[get("/?<name>&<order>&<limit>&<owner>&<offset>&<distinct>&<except>")]
 async fn list_docs(userid: UserId, conn: MainDbConn
     , name: Option<String>, order: Option<DocumentOrder>, limit: Option<usize>, owner: bool, offset: Option<i64>
-    , distinct: bool) -> DRResult<Json<Vec<DocumentInfo>>>{
+    , distinct: bool, except: Option<String>) -> DRResult<Json<Vec<DocumentInfo>>>{
   
     let vdocs= conn.run(move |c| {
         let mut query = 
@@ -116,6 +151,9 @@ async fn list_docs(userid: UserId, conn: MainDbConn
             } else {
                 query = query.filter(docs::name.eq(real_name));
             }
+        }
+        if let Some(Ok(real_except)) = except.map(|s| Uuid::parse_str(&s)) {
+            query = query.filter(docs::id.ne(real_except));
         }
         if owner {
             query = query.filter(docs::owner.eq(userid.0));
@@ -144,7 +182,7 @@ async fn list_docs(userid: UserId, conn: MainDbConn
             };
             query2 = query2.limit(real_limit as i64)
                 .offset(real_offset);
-            println!("{}",diesel::debug_query(&query2));
+            //println!("{}",diesel::debug_query(&query2));
             query2.load::<DocumentInfo>(c)
          } else {
             query.limit(real_limit as i64)
@@ -169,9 +207,9 @@ select distinct on (name) * from documents order by name, created desc
 */
 
 /// count documents
-#[get("/count?<name>&<owner>&<distinct>")]
+#[get("/count?<name>&<owner>&<distinct>&<except>")]
 async fn count_docs(userid: UserId, conn: MainDbConn
-    , name: Option<String>, owner: bool, distinct: bool) -> DRResult<Json<i64>>{
+    , name: Option<String>, owner: bool, distinct: bool, except: Option<String>) -> DRResult<Json<i64>>{
   
     let cnt= conn.run(move |c| {
         
@@ -187,6 +225,9 @@ async fn count_docs(userid: UserId, conn: MainDbConn
             } else {
                 query = query.filter(docs::name.eq(real_name));
             }
+        }
+        if let Some(Ok(real_except)) = except.map(|s| Uuid::parse_str(&s)) {
+            query = query.filter(docs::id.ne(real_except));
         }
         if owner {
             query = query.filter(docs::owner.eq(userid.0));
@@ -240,5 +281,5 @@ enum DocumentOrder {
 
 
 pub fn routes() -> Vec<Route> {
-    routes![upload_doc, get_doc, delete_doc, list_docs, count_docs]
+    routes![upload_doc, get_doc, get_doc_info, get_doc_data, delete_doc, list_docs, count_docs]
 }

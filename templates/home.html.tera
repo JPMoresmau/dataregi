@@ -112,7 +112,7 @@
             document.getElementById('docCountHeader').textContent=txt;
         }
 
-
+        resetDocList({'owner':true,'distinct':true});
     </script>
 
 </body>

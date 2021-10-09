@@ -10,7 +10,35 @@
     <div class="hero fullscreen">
         <div class="hero-body u-center">
             <div class="w-90" style="position: relative" id="tableRoot">
-               
+                <div class="row">
+                    <div class="col-9">
+                        <h3 id="doc_header" style="display: inline;"></h3>
+                        <span id="doc_download">
+                        </span>
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-3">
+                       Upload date
+                    </div>
+                    <div class="col-9" id="doc_timestamp">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-3">
+                       Size
+                    </div>
+                    <div class="col-9" id="doc_size">
+                    </div>
+                </div>
+                <div class="row" id="docHeaderRow">
+                    <div class="col-12">
+                       <h6 id="docCountHeader"></h6>
+                    </div>
+                  
+                </div>
+                {% include "doc_list" %}
             </div>
         </div>
     </div>
@@ -27,8 +55,24 @@
                 if (!response.ok){
                     showError(await response.text());
                 } else {
-                    const doc=await response.json();
-                    document.getElementById("title").textContent='DataRegi - '+doc['name'];
+                    const docInfo=await response.json();
+                    document.getElementById("title").textContent='DataRegi - '+docInfo['name'];
+                    document.getElementById("doc_header").textContent=docInfo['name'];
+                    const docDate=new Date(docInfo['created']);
+                    document.getElementById("doc_timestamp").textContent=docDate.toLocaleString();
+                    document.getElementById("doc_size").textContent=humanFileSize(docInfo['size']);
+
+                    const download=document.getElementById("doc_download");
+                    const a=document.createElement("a");
+                    a.href="/api/docs/"+encodeURIComponent(id)+"/data";
+                    a.download=docInfo['name'];
+                    const i=document.createElement("i");
+                    i.className="fas fa-download fa-wrapper fa-2x";
+                    i.title="Download "+docInfo['name'];
+                    a.appendChild(i);
+                    download.appendChild(a);
+                    
+                    resetDocList({'owner':false,'distinct':false,'name':docInfo['name'],'except':id,'queryDate':docDate});
                 }
                 
                
@@ -52,8 +96,52 @@
             errorCell.innerText=err;
         }
 
+        function showDocCount(docCount){
+            let txt="No other versions";
+            if (docCount==1){
+                txt="1 other versions";
+            } else if (docCount>1){
+                txt="There are " +docCount.toString()+" other versions";
+            }
+         
+            document.getElementById('docCountHeader').textContent=txt;
+        }
+
         loadDoc(doc_id);
         
+        /**
+        * https://stackoverflow.com/a/14919494/827593
+        * Format bytes as human-readable text.
+        * 
+        * @param bytes Number of bytes.
+        * @param si True to use metric (SI) units, aka powers of 1000. False to use 
+        *           binary (IEC), aka powers of 1024.
+        * @param dp Number of decimal places to display.
+        * 
+        * @return Formatted string.
+        */
+        function humanFileSize(bytes, si=false, dp=1) {
+            const thresh = si ? 1000 : 1024;
+        
+            if (Math.abs(bytes) < thresh) {
+            return bytes + ' B';
+            }
+        
+            const units = si 
+            ? ['kB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'] 
+            : ['KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB'];
+            let u = -1;
+            const r = 10**dp;
+        
+            do {
+            bytes /= thresh;
+            ++u;
+            } while (Math.round(Math.abs(bytes) * r) / r >= thresh && u < units.length - 1);
+        
+        
+            return bytes.toFixed(dp) + ' ' + units[u];
+        }
+
     </script>
 
 </body>

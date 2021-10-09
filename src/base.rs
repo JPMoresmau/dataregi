@@ -1,3 +1,4 @@
+use std::io::Cursor;
 use rocket::serde::{Deserialize, Serialize};
 
 use std::io::Error as IOError;
@@ -83,7 +84,7 @@ impl Default for EmailTokens {
 pub struct MainDbConn(diesel::PgConnection);
 
 #[derive(Serialize, Debug)]
-pub struct  StructuredError{
+pub struct StructuredError{
     #[serde(skip_serializing)]
     status: Status,
     error_type: DRError,
@@ -110,6 +111,20 @@ impl<'r,'o: 'r> Responder<'r,'o> for StructuredError {
     }
 }
 
+pub struct Download{
+    pub content_type: ContentType,
+    pub filename: String,
+    pub data: Vec<u8>,
+}
+
+impl<'r,'o: 'r> Responder<'r,'o> for Download {
+    fn respond_to(self, _request: &'r Request<'_>) -> Result<'o> {
+        Response::build().sized_body(self.data.len(),Cursor::new(self.data))
+            .header(self.content_type)
+            .raw_header("Content-Disposition",format!("attachment; filename=\"{}\"",self.filename))
+            .ok()
+    }
+}
 
 #[derive(Serialize, Debug)]
 pub enum DRError {

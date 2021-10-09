@@ -14,27 +14,17 @@
     let currentPage=0; 
     let docCount = 0;
     
-    const name='{% if documentName %}{{ documentName }}{% endif %}';
-    const distinct='{% if documentName %}{{ distinct }}{% else %}true{% endif %}';
-    const owner='{% if owner %}{{ owner }}{% else %}true{% endif %}'
-
     let timeout = null;
     const searchDocs=document.getElementById("searchDocs");
     let search=searchDocs!=null?searchDocs.value:'';
 
-    async function loadCount(){
+    async function loadCount(queryOptions){
         let query='/api/docs/count';
-        let queryObj={'owner':owner};
+        let queryObj=Object.assign({},queryOptions);
         
         if (search.length>0){
             queryObj['name']='*'+search+'*';
-            needAmp=true;
-        } else if (name.length>0){
-            queryObj['name']=name;
-        }
-        if (distinct=='true'){
-            queryObj['distinct']='true';
-        }
+        } 
         
         var queryString = Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
         if (queryString){
@@ -47,19 +37,15 @@
         return response.json();
     }
 
-    async function loadList(offset){
-        let queryObj={'owner':owner,'limit':pageSize,'offset':offset};
+    async function loadList(queryOptions, offset){
+        let queryObj=Object.assign({'limit':pageSize,'offset':offset},queryOptions);
+        
         
         if (search.length>0){
             queryObj['name']='*'+search+'*';
             needAmp=true;
-        } else if (name.length>0){
-            queryObj['name']=name;
-        }
-        if (distinct=='true'){
-            queryObj['distinct']='true';
-        }
-
+        } 
+       
         let query='/api/docs?'+Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
 
         const response = await fetch(query, {
@@ -74,15 +60,27 @@
                 docLine.className="row docLine";
                 let docItem=document.createElement("div");
                 docItem.className="col-9";
+                const docDate=new Date(docInfo['created'])
+
                 let a=document.createElement("a");
-                a.textContent=docInfo['name'];
+                if (queryOptions["queryDate"]){
+                    const queryDate=new Date(queryOptions["queryDate"]);
+                    if (docDate>queryDate){
+                        let i=document.createElement("i");
+                        i.className="fas fa-calendar fa-wrapper";
+                        i.title="Newer version";
+                        a.appendChild(i);
+                    }
+                }
+                a.appendChild(document.createTextNode(docInfo['name']));
+
                 a.href="document?id="+encodeURIComponent(docInfo['id']);
                 docItem.appendChild(a);
                 docLine.appendChild(docItem);
                 let details=document.createElement("div");
                 details.className="col-3";
                 details.style.textAlign="right";
-                details.textContent=new Date(docInfo['created']).toLocaleString();
+                details.textContent=docDate.toLocaleString();
                 docLine.appendChild(details);
                 //tableRoot.appendChild(docLine);
                 docHeaderRow.parentNode.insertBefore(docLine, docHeaderRow.nextSibling);
@@ -177,22 +175,21 @@
         }
     }
 
-    async function resetDocList(){
-        loadCount().then(data=>{
+    async function resetDocList(queryOptions,addListener=true){
+        if (searchDocs!=null && addListener){
+            searchDocs.addEventListener("input", function(e){
+                clearTimeout(timeout);
+                timeout = setTimeout(function () {
+                    search=searchDocs.value;
+                    resetDocList(queryOptions,false);
+                }, 1000);
+            }, false);
+        }
+        loadCount(queryOptions).then(data=>{
             docCount=data;
             showDocCount(docCount);
-            loadList(0).then(updatePagination(0));
+            loadList(queryOptions,0).then(updatePagination(0));
         });
     }
 
-    if (searchDocs!=null){
-        searchDocs.addEventListener("input", function(e){
-            clearTimeout(timeout);
-            timeout = setTimeout(function () {
-                search=searchDocs.value;
-                resetDocList();
-            }, 1000);
-        }, false);
-    }
-    resetDocList();
 </script>
