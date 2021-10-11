@@ -8,7 +8,7 @@ extern crate diesel;
 use rocket::fairing::AdHoc;
 use rocket::fs::{relative, NamedFile};
 use rocket::http::Status;
-use rocket::http::{Cookie, CookieJar};
+use rocket::http::{Cookie, CookieJar, SameSite};
 use rocket::outcome::IntoOutcome;
 use rocket::request::{self, FromRequest, Request,FlashMessage};
 use rocket::response::{status, status::NotFound, Flash, Redirect};
@@ -127,7 +127,7 @@ async fn login_from_token(
     tokens: &State<EmailTokens>,
     cookies: &CookieJar<'_>,
     conn: MainDbConn,
-) -> Template {
+) -> Result<Redirect,Template> {
     let maybe_reg = tokens.tokens.lock().unwrap().remove(token);
 
     let mut error = String::new();
@@ -166,8 +166,10 @@ async fn login_from_token(
                     };
                     match ruuid {
                         Ok(uuid) => {
-                            let mut c = Cookie::new("id", uuid.to_string());
-                            c.set_secure(Some(true));
+                            let c = Cookie::build("id", uuid.to_string())
+                                .secure(true)
+                                .same_site(SameSite::Lax) // so it works from email links
+                                .finish();
                             cookies.add_private(c);
                         }
                         Err(e) => {
@@ -185,9 +187,9 @@ async fn login_from_token(
     }
     let ctx = IndexContext { error: &error, message: "" };
     if error.is_empty() {
-        Template::render("home", &ctx)
+       Ok(Redirect::to("/"))
     } else {
-        Template::render("index", &ctx)
+       Err(Template::render("index", &ctx))
     }
 }
 
