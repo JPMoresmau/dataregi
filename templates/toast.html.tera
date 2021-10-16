@@ -1,11 +1,34 @@
-<div class="toast toast--success" id="toast" style="visibility:hidden">
-    <button class="btn-close" onclick="document.querySelector('#toast').style.visibility='hidden'"></button>
-    <p id="message"></p>
+<div id="toast-parent">
+
 </div>
 
 <script>
     function showToast(data){
-        document.querySelector("#message").innerHTML=data;
-        document.querySelector("#toast").style.visibility='visible';
+        addToast(data,"toast--success");
     }
+
+    function showWarningToast(data){
+        addToast(data,"toast--warning");
+    }
+
+    function showErrorToast(data){
+        addToast(data,"toast--error");
+    }
+
+    function addToast(data, cls){
+        const parent=document.getElementById("toast-parent");
+        let toast=document.createElement("div");
+        toast.className="toast "+cls;
+        let button=document.createElement("button");
+        button.className="btn-close";
+        button.onclick=()=>{
+            toast.style.display='none';
+        };
+        toast.appendChild(button);
+        let p=document.createElement('p');
+        p.textContent=data;
+        toast.appendChild(p);
+        parent.appendChild(toast);
+    }
+
 </script>

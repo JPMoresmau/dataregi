@@ -83,16 +83,28 @@
             for (const file of uploadInput.files) {
               data.append('files',file,file.name);
             }
-            const response = await fetch('/docs', {
+            const response = await fetch('/api/docs', {
                 method: 'POST',
                 body: data
             });
             response.json().then(data=>{
-                let msg=(data.length==1)?"1 document uploaded!":data.length+" documents uploaded!";
-                showToast(msg);
+                let count = 0;
+               
+                for (du of data){
+                    if ('Ok' in du){
+                        count++;
+                    } else if ('AlreadyExists' in du){
+                        showWarningToast(du['AlreadyExists']['upload_name'] +" already existed with same data!");
+                    }
+                }
+                if (count>0){
+                    const msg=(count==1)?"1 document uploaded!":count+" documents uploaded!";
+                    showToast(msg);
+                }
+               
                 uploadInput.value=null;
                 updateSize.call(uploadInput);
-                resetDocList();
+                resetDocList({'owner':true,'distinct':true});
             });
         }
 
@@ -113,6 +125,15 @@
         }
 
         resetDocList({'owner':true,'distinct':true});
+
+        let deleted=document.cookie.split('; ').find(row => row.startsWith('deleted'));
+        if (deleted){
+            const doc_name=deleted.split('=')[1];
+            if (doc_name){
+                showToast(doc_name+" successfully deleted!");
+                document.cookie="deleted=; expires=Thu, 01 Jan 1970 00:00:01 GMT;Secure";
+            }
+        }
     </script>
 
 </body>

@@ -21,20 +21,21 @@ use std::fmt;
 use std::error::Error as StdError;
 use rocket::serde::json::Json;
 
-#[derive(Serialize)]
+#[derive(Serialize,Debug)]
 pub struct IndexContext<'r> {
     pub error: &'r str,
     pub message: &'r str,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize,Debug)]
 pub struct UserContext<'r> {
     pub user_id: &'r Uuid,
 }
 
+#[derive(Clone, Debug)]
 pub struct UserId(pub Uuid);
 
-#[derive(Serialize)]
+#[derive(Serialize,Debug)]
 pub struct DocumentContext<'r> {
     pub user_id: &'r Uuid,
     pub doc_id: &'r str,

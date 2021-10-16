@@ -1,6 +1,6 @@
 mod common;
 
-use dataregi::model::{Document,DocumentInfo};
+use dataregi::{docs::DocumentUpload, model::{Document,DocumentInfo}};
 use std::fs;
 use common::{setup,with_test_login};
 use rocket::http::{ContentType, Status, Header};
@@ -8,10 +8,9 @@ use uuid::Uuid;
 use rocket::local::blocking::Client;
 use serial_test::serial;
 
-fn upload(client: &Client, path: &str) -> Uuid {
+fn do_upload(client: &Client, path: &str) -> DocumentUpload {
     let file = fs::read(path).unwrap();
     let mut cnt=vec![];
-
 
     cnt.extend("-----------------------------3511489321811197009899980000\r\n".as_bytes());    
     cnt.extend(format!("Content-Disposition: form-data; name=\"files\"; filename=\"{}\"\r\n",path).as_bytes());
@@ -30,10 +29,17 @@ fn upload(client: &Client, path: &str) -> Uuid {
     assert_eq!(response.content_type(), Some(ContentType::JSON));
 
     // get id
-    let uuids:Vec<Uuid> = response.into_json().unwrap(); 
+    let mut uuids:Vec<DocumentUpload> = response.into_json().unwrap(); 
 
     assert_eq!(uuids.len(),1);
-    uuids[0]
+    uuids.pop().unwrap()
+}
+
+fn upload(client: &Client, path: &str) -> Uuid {
+    match do_upload(client,path) {
+        DocumentUpload::Ok{id} => id,
+        du => panic!("unexpected upload result:{:?}",du),
+    }
 }
 
 fn delete(client: &Client, uuids: &[Uuid]) {
@@ -384,7 +390,7 @@ fn distinct(){
     assert_eq!(0,docs.len());
 
     let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
-    let uuid2 = upload(&client, "test_data/1sheet1cell.ods");
+    let uuid2 = upload(&client, "test_data/v2/1sheet1cell.ods");
     let uuid3 = upload(&client, "test_data/1sheet1row.ods");
 
     let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
@@ -509,4 +515,22 @@ fn versions(){
     assert_eq!(1,cnt);
 
     delete(&client, &vec![uuid1,uuid2]);
+}
+
+#[test]
+#[serial]
+fn detect_duplicate(){
+    let client= setup();
+
+    let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
+
+    let upd = do_upload(&client, "test_data/1sheet1cell.ods");
+    match upd {
+        DocumentUpload::AlreadyExists{upload_name, existing_id}=> {
+            assert_eq!(uuid1,existing_id);
+            assert_eq!("1sheet1cell.ods",&upload_name);
+        },
+        du => panic!("Unexpect upload: {:?}",du),
+    };
+    delete(&client, &vec![uuid1]);
 }

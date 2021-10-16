@@ -15,6 +15,8 @@
                         <h3 id="doc_header" style="display: inline;"></h3>
                         <span id="doc_download">
                         </span>
+                        <span id="doc_delete" style="text-align: end;">
+                        </span>
                     </div>
 
                 </div>
@@ -43,8 +45,38 @@
         </div>
     </div>
 
+    <div class="modal modal-animated--zoom-in" id="delete-modal">
+        <a href="#doc_delete" class="modal-overlay close-btn" aria-label="Close"></a>
+        <div class="modal-content" role="document">
+            <div class="modal-header">
+                <a href="#doc_delete" class="u-pull-right" aria-label="Close">
+                    <span class="icon">
+                        <i class="fa-wrapper fa fa-times"></i>
+                    </span>
+                </a>
+                <div class="modal-title">Confirm deletion</div>
+            </div>
+            <div class="modal-body">
+                <div id="delete_modal_text">
+                    
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="form-section u-text-right">
+                    <a href="#doc_delete">
+                        <button class="btn btn-small u-inline-block">Cancel</button>
+                    </a>
+                    <a href="#doc_delete">
+                        <button class="btn-info btn-small u-inline-block" onclick="deleteDoc()" >Confirm</button>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const doc_id='{{ doc_id }}';
+        let doc_name='';
 
         async function loadDoc(id){
             if (id){
@@ -56,6 +88,7 @@
                     showError(await response.text());
                 } else {
                     const docInfo=await response.json();
+                    doc_name=docInfo['name'];
                     document.getElementById("title").textContent='DataRegi - '+docInfo['name'];
                     document.getElementById("doc_header").textContent=docInfo['name'];
                     const docDate=new Date(docInfo['created']);
@@ -72,12 +105,36 @@
                     a.appendChild(i);
                     download.appendChild(a);
                     
+                    const delspan=document.getElementById("doc_delete");
+                    const del = document.createElement("a");
+                    del.href="#delete-modal";
+                    const deli=document.createElement("i");
+                    deli.className="fas fa-trash fa-wrapper";
+                    deli.title="Delete "+docInfo['name'];
+                    del.appendChild(deli);
+                    delspan.appendChild(del);
+
+                    document.getElementById("delete_modal_text").innerText="Are you sure you want to delete "+docInfo['name']+"?";
+
                     resetDocList({'owner':false,'distinct':false,'name':docInfo['name'],'except':id,'queryDate':docDate});
                 }
                 
                
             } else {
                 showError("No document ID provided");
+            }
+        }
+
+        async function deleteDoc(){
+            const query="/api/docs/"+encodeURIComponent(doc_id);
+            const response = await fetch(query, {
+                method: 'DELETE'
+            })
+            if (!response.ok){
+                showError(await response.text());
+            } else {
+                document.cookie="deleted="+doc_name+"; Secure";
+                document.location="/";
             }
         }
 

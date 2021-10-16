@@ -10,6 +10,7 @@ use std::fs::{read,create_dir_all, remove_file};
 use crate::model::{Document,DocumentInfo};
 use crate::schema::documents::dsl::documents;
 use crate::schema::documents as docs;
+use rocket::serde::{Deserialize,Serialize};
 
 use uuid::Uuid;
 
@@ -23,9 +24,17 @@ struct Upload<'r> {
     files: Vec<TempFile<'r>>,
 }
 
+#[derive(Serialize,Deserialize,Debug,Clone)]
+pub enum DocumentUpload {
+    Ok{id: Uuid},
+    AlreadyExists{
+        upload_name: String,
+        existing_id: Uuid,
+    },
+}
 
 #[post("/", data = "<upload>")]
-async fn upload_doc(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<String>>>{
+async fn upload_doc(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<DocumentUpload>>> {
     let mut uuids=vec![];
     println!("files:{}",upload.files.len());
     for file in upload.files.iter_mut() {
@@ -33,7 +42,7 @@ async fn upload_doc(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<
             println!("name:{}",name);
             let mut full=PathBuf::new();
             full.push(&config.temp_dir.original());
-            full.push(userid.0.to_string());
+            full.push(&userid.0.to_string());
             create_dir_all(&full)?;
             full.push(name);
             let doc_name= file.raw_name().map(|f| format!("{}",f.dangerous_unsafe_unsanitized_raw())).unwrap_or(String::from(name));
@@ -46,27 +55,40 @@ async fn upload_doc(userid: UserId,mut upload: Form<Upload<'_>>, config: &State<
             let data=read(&full)?;
             let mut hasher = DefaultHasher::new();
             data.hash(&mut hasher);
-            let hash= hasher.finish();
+            let hash= hasher.finish().to_string();
 
-            let doc = Document{
-                id: Uuid::new_v4(),
-                name: short_name,
-                created: Utc::now(),
-                owner: userid.0,
-                mime: file.content_type().map(|ct| format!("{}",ct)),
-                size: data.len() as i64,
-                data: data,
-                hash: Some(format!("{}",hash))
-            };
-            remove_file(&full)?;
-
-            let doc_id=conn.run(move |c| {
-                diesel::insert_into(documents)
-                    .values(&doc)
-                    .execute(c)
-                    .map(|_| doc.id)
+            let uid=userid.0.clone();
+            let h = hash.clone();
+            let sn=short_name.clone();
+            let mut docs=conn.run(move |c| {
+                documents.filter(docs::hash.eq(Some(h))).filter(docs::name.eq(sn)).filter(docs::owner.eq(uid))
+                .select(docs::id)
+                .load::<Uuid>(c)
             }).await?;
-            uuids.push(doc_id.to_string());
+            if let Some(doc)=docs.pop() {
+                uuids.push(DocumentUpload::AlreadyExists{upload_name:short_name, existing_id:doc});
+            } else {
+
+                let doc = Document{
+                    id: Uuid::new_v4(),
+                    name: short_name,
+                    created: Utc::now(),
+                    owner: userid.0,
+                    mime: file.content_type().map(|ct| format!("{}",ct)),
+                    size: data.len() as i64,
+                    data: data,
+                    hash: Some(hash)
+                };
+                
+                let doc_id=conn.run(move |c| {
+                    diesel::insert_into(documents)
+                        .values(&doc)
+                        .execute(c)
+                        .map(|_| doc.id)
+                }).await?;
+                uuids.push(DocumentUpload::Ok{id:doc_id});
+            } 
+            remove_file(&full)?;
         }
     }
     Ok(Json(uuids))
