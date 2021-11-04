@@ -2,52 +2,10 @@ mod common;
 
 use dataregi::{docs::DocumentUpload, model::{Document,DocumentInfo}};
 use std::fs;
-use common::{setup,with_test_login};
-use rocket::http::{ContentType, Status, Header};
-use uuid::Uuid;
-use rocket::local::blocking::Client;
+use common::{setup,with_test_login, do_upload,upload,delete,json_ok_response};
+use rocket::http::{ContentType, Status};
 use serial_test::serial;
 
-fn do_upload(client: &Client, path: &str) -> DocumentUpload {
-    let file = fs::read(path).unwrap();
-    let mut cnt=vec![];
-
-    cnt.extend("-----------------------------3511489321811197009899980000\r\n".as_bytes());    
-    cnt.extend(format!("Content-Disposition: form-data; name=\"files\"; filename=\"{}\"\r\n",path).as_bytes());
-    //cnt.extend("Content-Transfer-Encoding: binary\r\n".as_bytes());
-    cnt.extend("Content-Type: application/vnd.oasis.opendocument.spreadsheet\r\n\r\n".as_bytes());
-    cnt.extend(&file);
-    cnt.extend("\r\n-----------------------------3511489321811197009899980000--\r\n".as_bytes()); 
-
-    let req = with_test_login(client.post("/api/docs"), 1)
-        .header(ContentType::with_params("multipart", "form-data", ("boundary", "---------------------------3511489321811197009899980000")))
-        .header(Header::new("Content-Length",format!("{}",cnt.len())))
-        .body(cnt);
-    
-    let response = req.dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-
-    // get id
-    let mut uuids:Vec<DocumentUpload> = response.into_json().unwrap(); 
-
-    assert_eq!(uuids.len(),1);
-    uuids.pop().unwrap()
-}
-
-fn upload(client: &Client, path: &str) -> Uuid {
-    match do_upload(client,path) {
-        DocumentUpload::Ok{id} => id,
-        du => panic!("unexpected upload result:{:?}",du),
-    }
-}
-
-fn delete(client: &Client, uuids: &[Uuid]) {
-    for uuid in uuids.iter(){
-        let response= with_test_login(client.delete(format!("/api/docs/{}",uuid)), 1).dispatch();
-        assert_eq!(response.status(),Status::NoContent);
-    }
-}
 
 #[test]
 #[serial]
@@ -59,22 +17,14 @@ fn upload_get_delete() {
     let uuid = upload(&client, "test_data/1sheet1cell.ods");
    
     // read doc again
-    let response= with_test_login(client.get(format!("/api/docs/{}",uuid)), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let doc:Document = response.into_json().unwrap(); 
-
+    let doc:Document = json_ok_response(with_test_login(client.get(format!("/api/docs/{}",uuid)), 1));
     assert_eq!(uuid,doc.id);
     assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb31",doc.owner.to_string());
     assert_eq!(file,doc.data);
     assert_eq!(file.len() as i64, doc.size);
 
     // read metadata only
-    let response= with_test_login(client.get(format!("/api/docs/{}/info",uuid)), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let doc:DocumentInfo = response.into_json().unwrap(); 
-
+    let doc:DocumentInfo = json_ok_response(with_test_login(client.get(format!("/api/docs/{}/info",uuid)), 1));
     assert_eq!(uuid,doc.id);
     assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb31",doc.owner.to_string());
     assert_eq!(file.len() as i64, doc.size);
@@ -119,11 +69,7 @@ fn list(){
     let uuid2 = upload(&client, "test_data/1sheet1row.ods");
     let uuid3 = upload(&client, "test_data/1sheet1col.ods");
 
-    let response= with_test_login(client.get("/api/docs/"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(3,docs.len());
 
     let doci1=&docs[0];
@@ -138,11 +84,7 @@ fn list(){
     assert_eq!(doci2.name,"1sheet1row.ods");
     assert_eq!(doci3.name,"1sheet1cell.ods");
 
-    let response= with_test_login(client.get("/api/docs?limit=2"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?limit=2"), 1));
     assert_eq!(2,docs.len());
 
     let doci1=&docs[0];
@@ -154,11 +96,7 @@ fn list(){
     assert_eq!(doci1.name,"1sheet1col.ods");
     assert_eq!(doci2.name,"1sheet1row.ods");
    
-    let response= with_test_login(client.get("/api/docs?limit=2&order=recent"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?limit=2&order=recent"), 1));
     assert_eq!(2,docs.len());
 
     let doci1=&docs[0];
@@ -171,11 +109,7 @@ fn list(){
     assert_eq!(doci2.name,"1sheet1row.ods");
    
 
-    let response= with_test_login(client.get("/api/docs?limit=2&order=name"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?limit=2&order=name"), 1));
     assert_eq!(2,docs.len());
 
     let doci1=&docs[0];
@@ -187,11 +121,7 @@ fn list(){
     assert_eq!(doci1.name,"1sheet1cell.ods");
     assert_eq!(doci2.name,"1sheet1col.ods");
 
-    let response= with_test_login(client.get("/api/docs?limit=2&order=name&offset=1"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?limit=2&order=name&offset=1"), 1));
     assert_eq!(2,docs.len());
 
     let doci1=&docs[0];
@@ -205,11 +135,7 @@ fn list(){
 
     delete(&client, &vec![uuid1,uuid2,uuid3]);
 
-    let response= with_test_login(client.get("/api/docs/"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(0,docs.len());
 }
 
@@ -218,40 +144,24 @@ fn list(){
 fn search(){
     let client= setup();
 
-    let response= with_test_login(client.get("/api/docs/"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(0,docs.len());
 
     let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
     let uuid2 = upload(&client, "test_data/1sheet1row.ods");
     let uuid3 = upload(&client, "test_data/1sheet1col.ods");
 
-    let response= with_test_login(client.get("/api/docs?order=name&name=1sheet1cell.ods"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?order=name&name=1sheet1cell.ods"), 1));
     assert_eq!(1,docs.len());
     let doci1=&docs[0];
     assert_eq!(doci1.id,uuid1);
    
     assert_eq!(doci1.name,"1sheet1cell.ods");
 
-    let response= with_test_login(client.get("/api/docs?order=name&name=sheet"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?order=name&name=sheet"), 1));
     assert_eq!(0,docs.len());
 
-    let response= with_test_login(client.get("/api/docs?order=name&name=*sheet*"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?order=name&name=*sheet*"), 1));
     assert_eq!(3,docs.len());
     let doci1=&docs[0];
     let doci2=&docs[1];
@@ -265,11 +175,7 @@ fn search(){
     assert_eq!(doci2.name,"1sheet1col.ods");
     assert_eq!(doci3.name,"1sheet1row.ods");
 
-    let response= with_test_login(client.get("/api/docs?order=name&name=*SHEET*"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs?order=name&name=*SHEET*"), 1));
     assert_eq!(3,docs.len());
     let doci1=&docs[0];
     let doci2=&docs[1];
@@ -285,11 +191,7 @@ fn search(){
 
     delete(&client, &vec![uuid1,uuid2,uuid3]);
 
-    let response= with_test_login(client.get("/api/docs/"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(0,docs.len());
 }
 
@@ -298,61 +200,33 @@ fn search(){
 fn count(){
     let client= setup();
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(0,cnt);
 
     let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(1,cnt);
 
     let uuid2 = upload(&client, "test_data/1sheet1row.ods");
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(2,cnt);
 
     let uuid3 = upload(&client, "test_data/1sheet1col.ods");
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(3,cnt);
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true&name=*col*"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true&name=*col*"), 1));
     assert_eq!(1,cnt);
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true&name=*COL*"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true&name=*COL*"), 1));
     assert_eq!(1,cnt);
 
 
     delete(&client, &vec![uuid1,uuid2,uuid3]);
-    let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(0,cnt);
 }
 
@@ -361,57 +235,29 @@ fn count(){
 fn distinct(){
     let client= setup();
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(0,cnt);
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true&distinct=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true&distinct=true"), 1));
     assert_eq!(0,cnt);
 
-    let response= with_test_login(client.get("/api/docs/"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(0,docs.len());
 
-    let response= with_test_login(client.get("/api/docs/?distinct=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?distinct=true"), 1));
     assert_eq!(0,docs.len());
 
     let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
     let uuid2 = upload(&client, "test_data/v2/1sheet1cell.ods");
     let uuid3 = upload(&client, "test_data/1sheet1row.ods");
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(3,cnt);
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true&distinct=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true&distinct=true"), 1));
     assert_eq!(2,cnt);
 
-    let response= with_test_login(client.get("/api/docs/"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(3,docs.len());
     let doci1=&docs[0];
     let doci2=&docs[1];
@@ -421,11 +267,7 @@ fn distinct(){
     assert_eq!(doci2.id,uuid2);
     assert_eq!(doci3.id,uuid1);
 
-    let response= with_test_login(client.get("/api/docs/?distinct=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?distinct=true"), 1));
     assert_eq!(2,docs.len());
     let doci1=&docs[0];
     let doci2=&docs[1];
@@ -435,11 +277,7 @@ fn distinct(){
 
     delete(&client, &vec![uuid1]);
 
-    let response= with_test_login(client.get("/api/docs/?distinct=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?distinct=true"), 1));
     assert_eq!(2,docs.len());
     let doci1=&docs[0];
     let doci2=&docs[1];
@@ -458,11 +296,7 @@ fn versions(){
     let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
     let uuid2 = upload(&client, "test_data/v2/1sheet1cell.ods");
 
-    let response= with_test_login(client.get("/api/docs/?name=1sheet1cell.ods"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-    
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?name=1sheet1cell.ods"), 1));
     assert_eq!(2,docs.len());
     let doci1=&docs[0];
     let doci2=&docs[1];
@@ -470,48 +304,28 @@ fn versions(){
     assert_eq!(doci1.id,uuid2);
     assert_eq!(doci2.id,uuid1);
 
-    let response= with_test_login(client.get("/api/docs/?1sheet1cell.ods&distinct=true"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-    
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?1sheet1cell.ods&distinct=true"), 1));
     assert_eq!(1,docs.len());
     let doci1=&docs[0];
     
     assert_eq!(doci1.id,uuid2);
     
-    let response= with_test_login(client.get(format!("/api/docs/?name=1sheet1cell.ods&distinct=true&except={}",uuid1)), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-    
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get(format!("/api/docs/?name=1sheet1cell.ods&distinct=true&except={}",uuid1)), 1));
     assert_eq!(1,docs.len());
     let doci1=&docs[0];
     
     assert_eq!(doci1.id,uuid2);
     
-    let response= with_test_login(client.get(format!("/api/docs/?name=1sheet1cell.ods&distinct=true&except={}",uuid2)), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let docs:Vec<DocumentInfo> = response.into_json().unwrap(); 
-    
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get(format!("/api/docs/?name=1sheet1cell.ods&distinct=true&except={}",uuid2)), 1));
     assert_eq!(1,docs.len());
     let doci1=&docs[0];
     
     assert_eq!(doci1.id,uuid1);
 
-    let response= with_test_login(client.get("/api/docs/count?owner=true&name=1sheet1cell.ods"), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true&name=1sheet1cell.ods"), 1));
     assert_eq!(2,cnt);
 
-    let response= with_test_login(client.get(format!("/api/docs/count?owner=true&name=1sheet1cell.ods&except={}",uuid2)), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
-    assert_eq!(response.content_type(), Some(ContentType::JSON));
-    let cnt:i64 = response.into_json().unwrap(); 
-
+    let cnt:i64 = json_ok_response(with_test_login(client.get(format!("/api/docs/count?owner=true&name=1sheet1cell.ods&except={}",uuid2)), 1));
     assert_eq!(1,cnt);
 
     delete(&client, &vec![uuid1,uuid2]);

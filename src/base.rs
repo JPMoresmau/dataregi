@@ -133,9 +133,8 @@ pub enum DRError {
     IOError,
     UuidError,
     NotFoundError,
+    ForbiddenError,
 }
-
-
 
 impl fmt::Display for StructuredError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -147,6 +146,12 @@ impl StdError for StructuredError {
     fn description(&self) -> &str {
         &self.error
     }
+}
+
+pub fn forbidden<T>() -> DRResult<T>{
+    Err(StructuredError{status:Status::Forbidden,
+        error_type:DRError::ForbiddenError,
+        error: String::new()})
 }
 
 impl From<DieselError> for StructuredError {

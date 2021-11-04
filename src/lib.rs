@@ -37,6 +37,7 @@ pub mod model;
 use model::User;
 pub mod schema;
 
+pub mod accesses;
 pub mod docs;
 
 #[get("/<path..>", rank = 3)]
@@ -262,6 +263,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
             ],
         )
         .mount("/api/docs",docs::routes())
+        .mount("/api/accesses",accesses::routes())
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
         .attach(Template::fairing())

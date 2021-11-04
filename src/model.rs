@@ -8,27 +8,29 @@ use diesel::sql_types::BigInt;
 pub struct User {
     pub id: Uuid,
     pub email: String,
-    pub name: Option<String>,
+    pub name: String,
     pub created: DateTime<Utc>,
     pub last_login: Option<DateTime<Utc>>,
 }
 
 impl User {
     pub fn new_login<S: Into<String>>(email: S) -> Self {
+        let n=email.into();
         User {
             id:Uuid::new_v4(),
-            email:email.into(),
-            name:Option::None,
+            email:n.clone(),
+            name:n,
             created: Utc::now(),
             last_login: Some(Utc::now()),
         }
     }
 
     pub fn new_reference<S: Into<String>>(email: S) -> Self {
+        let n=email.into();
         User {
             id:Uuid::new_v4(),
-            email:email.into(),
-            name:Option::None,
+            email:n.clone(),
+            name:n,
             created: Utc::now(),
             last_login: None,
         }
@@ -61,4 +63,13 @@ pub struct DocumentInfo {
 pub struct GenericCount {
     #[sql_type = "BigInt"]
     pub count: i64
+}
+
+#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug)]
+#[primary_key(document_id, user_id)]
+#[table_name = "accesses"]
+pub struct Access {
+    pub document_id: Uuid,
+    pub user_id: Uuid,
+    pub created: DateTime<Utc>,
 }
