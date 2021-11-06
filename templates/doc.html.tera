@@ -1,3 +1,4 @@
+{% import "macros" as macros %}
 <!DOCTYPE html>
 <html>
     <head>
@@ -7,6 +8,7 @@
 <body>
 
     {% include "page_header" %}
+    
     <div class="hero fullscreen">
         <div class="hero-body u-center">
             <div class="w-90" style="position: relative" id="tableRoot">
@@ -34,13 +36,24 @@
                     <div class="col-9" id="doc_size">
                     </div>
                 </div>
-                <div class="row" id="docHeaderRow">
-                    <div class="col-12">
-                       <h6 id="docCountHeader"></h6>
+                <div class="row">
+                    <div class="col-6">
+                        <div>
+                            <div class="row" id="docHeaderRow_version_list">
+                                <div class="col-12">
+                                    <h6 id="docCountHeader"></h6>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-12">
+                                   {{ macros::pagination(label="version_list") }}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                   
                 </div>
-                {% include "doc_list" %}
+               
             </div>
         </div>
     </div>
@@ -74,13 +87,15 @@
         </div>
     </div>
 
+    {% include "list" %}
+
     <script>
         const doc_id='{{ doc_id }}';
         let doc_name='';
 
         async function loadDoc(id){
             if (id){
-                const query="/api/docs/"+encodeURIComponent(id);
+                const query="/api/docs/"+encodeURIComponent(id)+"/info";
                 const response = await fetch(query, {
                     method: 'GET'
                 })
@@ -116,7 +131,9 @@
 
                     document.getElementById("delete_modal_text").innerText="Are you sure you want to delete "+docInfo['name']+"?";
 
-                    resetDocList({'owner':false,'distinct':false,'name':docInfo['name'],'except':id,'queryDate':docDate});
+                    let pagination=new Pagination('version_list','/api/docs/count',{'owner':false,'distinct':false,'name':docInfo['name'],'except':id,'queryDate':docDate});
+                    pagination.onCount=showDocCount;
+                    resetDocList(pagination,false);
                 }
                 
                
@@ -153,12 +170,12 @@
             errorCell.innerText=err;
         }
 
-        function showDocCount(docCount){
+        function showDocCount(pagination){
             let txt="No other versions";
-            if (docCount==1){
-                txt="1 other versions";
-            } else if (docCount>1){
-                txt="There are " +docCount.toString()+" other versions";
+            if (pagination.count==1){
+                txt="1 other version";
+            } else if (pagination.count>1){
+                txt="There are " +pagination.count.toString()+" other versions";
             }
          
             document.getElementById('docCountHeader').textContent=txt;

@@ -1,0 +1,8 @@
+{% macro pagination(label) %}
+        <div class="pagination u-center">
+            <div class="pagination-item short" id="previousDocPage_{{ label }}"><a href="javascript:previousDocPage('{{ label }}')" >Prev</a></div>
+            <div class="pagination-item short selected"><a href="!#" class="disabled" id="currentDocPage_{{ label }}">1</a></div> 
+
+            <div class="pagination-item short" id="nextDocPage_{{ label }}"><a href="javascript:nextDocPage('{{ label }}')">Next</a></div>
+        </div>
+{% endmacro pagination %}

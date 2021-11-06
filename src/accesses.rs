@@ -1,6 +1,7 @@
 use rocket::{Route};
 use crate::base::*;
 use rocket::serde::json::Json;
+use rocket::http::Status;
 use crate::model::{Access, User};
 use crate::schema::accesses::dsl::accesses;
 use crate::schema::users::dsl::users;
@@ -53,7 +54,7 @@ async fn has_access(document_id:Uuid, user_id: Uuid, conn: &MainDbConn) -> DRRes
 }
 
 #[put("/<uuid>/<user>")]
-async fn add_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Json<()>>{
+async fn add_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Status>{
     let real_uuid=Uuid::parse_str(uuid)?;
     let real_userid=Uuid::parse_str(user)?;
 
@@ -73,12 +74,12 @@ async fn add_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> D
             .execute(c)
         }).await?;
     }
-    Ok(Json(()))
+    Ok(Status::NoContent)
     
 }
 
 #[delete("/<uuid>/<user>")]
-async fn remove_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Json<()>>{
+async fn remove_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Status>{
     let real_uuid=Uuid::parse_str(uuid)?;
     let real_userid=Uuid::parse_str(user)?;
 
@@ -98,7 +99,7 @@ async fn remove_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -
     } else {
         return forbidden();
     }
-    Ok(Json(()))
+    Ok(Status::NoContent)
     
 }
 

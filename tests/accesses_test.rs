@@ -1,6 +1,6 @@
 mod common;
 
-use dataregi::{model::{User}};
+use dataregi::{model::{User,Document,DocumentInfo}};
 use common::{setup,with_test_login,upload,delete, json_ok_response};
 use rocket::http::{ContentType, Status};
 use serial_test::serial;
@@ -20,7 +20,7 @@ fn crud() {
     assert_eq!(0,users.len());
 
     let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
 
     let users:Vec<User> = json_ok_response(with_test_login(client.get(format!("/api/accesses/{}",uuid)), 1)); 
     assert_eq!(1,users.len());
@@ -31,7 +31,7 @@ fn crud() {
     assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb32",&users[0].id.to_string());
 
     let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb33")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
 
     let users:Vec<User> = json_ok_response(with_test_login(client.get(format!("/api/accesses/{}",uuid)), 1));
     assert_eq!(2,users.len());
@@ -40,7 +40,7 @@ fn crud() {
     assert_eq!(2,users_cnt);
 
     let response= with_test_login(client.delete(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
 
     let users:Vec<User> = json_ok_response(with_test_login(client.get(format!("/api/accesses/{}",uuid)), 1));
     assert_eq!(1,users.len());
@@ -48,7 +48,7 @@ fn crud() {
     assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb33",&users[0].id.to_string());
 
     let response= with_test_login(client.delete(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb33")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
 
     let users:Vec<User> = json_ok_response(with_test_login(client.get(format!("/api/accesses/{}",uuid)), 1));
     assert_eq!(0,users.len());
@@ -71,7 +71,7 @@ fn forbidden_accesses() {
     assert_eq!(response.status(),Status::Forbidden);
 
     let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
 
     // cannot delete if no access (user: 3)
     let response= with_test_login(client.delete(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 3).dispatch();
@@ -79,11 +79,11 @@ fn forbidden_accesses() {
 
     // can add if access but not owner
     let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb33")), 2).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
 
     // can remove ourselves
     let response= with_test_login(client.delete(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 2).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
     
     // delete document should delete accesses
     delete(&client, &vec![uuid]);
@@ -97,11 +97,11 @@ fn paging_accesses() {
     let uuid = upload(&client, "test_data/1sheet1cell.ods");
 
     let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
     let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb33")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
     let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb34")), 1).dispatch();
-    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.status(),Status::NoContent);
 
     let users_cnt:i64 = json_ok_response(with_test_login(client.get(format!("/api/accesses/{}/count",uuid)), 1)); 
     assert_eq!(3,users_cnt);
@@ -116,4 +116,42 @@ fn paging_accesses() {
     assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb34",&users[0].id.to_string());
    
     delete(&client, &vec![uuid]);
+}
+
+#[test]
+#[serial]
+fn get_docs_via_access() {
+    let client= setup();
+
+    let uuid = upload(&client, "test_data/1sheet1cell.ods");
+   
+    let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 1).dispatch();
+    assert_eq!(response.status(),Status::NoContent);
+
+    let doc:Document = json_ok_response(with_test_login(client.get(format!("/api/docs/{}",uuid)), 2));
+    assert_eq!(uuid,doc.id);
+    assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb31",doc.owner.to_string());
+
+    let doc:DocumentInfo = json_ok_response(with_test_login(client.get(format!("/api/docs/{}/info",uuid)), 1));
+    assert_eq!(uuid,doc.id);
+    assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb31",doc.owner.to_string());
+
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 2));
+    assert_eq!(1,docs.len());
+
+    let doci1=&docs[0];
+    assert_eq!(doci1.id,uuid);
+  
+    let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=false"), 2));
+    assert_eq!(1,cnt);
+
+    // delete as another user, no error but no effect
+    let response= with_test_login(client.delete(format!("/api/docs/{}",uuid)), 2).dispatch();
+    assert_eq!(response.status(),Status::NoContent);
+
+    let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 2));
+    assert_eq!(1,docs.len());
+
+    delete(&client, &vec![uuid]);
+
 }

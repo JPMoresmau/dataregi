@@ -118,7 +118,7 @@ async fn send_login_email(
     .await
     .map_err(|e| status::Custom(Status::InternalServerError, e.to_string()))?;
 
-    Ok(status::Accepted(Some(Json(String::from("Email sent")))))
+    Ok(status::Accepted(Some(Json(format!("An email has been sent to {}, please click on the link it contains to login!",email.address)))))
 }
 
 #[get("/loginToken?<token>")]

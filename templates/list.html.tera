@@ -1,29 +1,45 @@
-<div class="row">
-    <div class="col-12" >
-        <div class="pagination u-center">
-            <div class="pagination-item short" id="previousDocPage"><a href="javascript:previousDocPage()" >Prev</a></div>
-            <div class="pagination-item short selected"><a href="!#" class="disabled" id="currentDocPage">1</a></div> 
-
-            <div class="pagination-item short" id="nextDocPage"><a href="javascript:nextDocPage()">Next</a></div>
-        </div>
-    </div>
-</div>
 
 <script>
-    const pageSize=10;
+    /*const pageSize=10;
     let currentPage=0; 
     let docCount = 0;
     
     let timeout = null;
     const searchDocs=document.getElementById("searchDocs");
-    let search=searchDocs!=null?searchDocs.value:'';
+    let search=searchDocs!=null?searchDocs.value:'';*/
 
-    async function loadCount(queryOptions){
-        let query='/api/docs/count';
-        let queryObj=Object.assign({},queryOptions);
-        
-        if (search.length>0){
-            queryObj['name']='*'+search+'*';
+    class Pagination {
+        label;
+        searchField = null;
+        searchText = '';
+        pageSize = 3;
+        currentPage = 0;
+        count = 0;
+        timeout = null;
+        countQuery;
+        queryOptions;
+        onCount=function(_pagination){};
+        loadList=loadList;
+
+        constructor(label, countQuery, queryOptions){
+            this.label=label;
+            this.countQuery=countQuery;
+            this.searchField=document.getElementById("searchDocs_"+label);
+            if (this.searchField!=null){
+                this.searchText=this.searchField.value;
+            }
+            this.queryOptions=queryOptions;
+        }
+    }
+
+    let paginationsByLabel={};
+
+    async function loadCount(pagination){
+        let query=pagination.countQuery;
+        let queryObj=Object.assign({},pagination.queryOptions);
+      
+        if (pagination.searchText && pagination.searchText.length>0){
+            queryObj['name']='*'+pagination.searchText+'*';
         } 
         
         var queryString = Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
@@ -37,12 +53,13 @@
         return response.json();
     }
 
-    async function loadList(queryOptions, offset){
-        let queryObj=Object.assign({'limit':pageSize,'offset':offset},queryOptions);
-        
-        
-        if (search.length>0){
-            queryObj['name']='*'+search+'*';
+    async function loadList(label, offset){
+        let pagination=paginationsByLabel[label];
+        let queryOptions=pagination['queryOptions'];
+        let queryObj=Object.assign({'limit':pagination.pageSize,'offset':offset},queryOptions);
+                
+        if (pagination.searchText && pagination.searchText.length>0){
+            queryObj['name']='*'+pagination.searchText+'*';
             needAmp=true;
         } 
        
@@ -53,7 +70,7 @@
             });
         return response.json().then(data=>{
             document.querySelectorAll(".docLine").forEach(el => el.remove());
-            let docHeaderRow=document.getElementById("docHeaderRow");
+            let docHeaderRow=document.getElementById("docHeaderRow_"+label);
             
             for (const docInfo of data){
                 let docLine=document.createElement("div");
@@ -89,10 +106,12 @@
         });
     }
 
-    function updatePagination(page){
-        currentPage=page;
-        //console.log("currentPage",currentPage,"docCount",docCount,"pageSize",pageSize);
-        const prev=document.getElementById("previousDocPage");
+    function updatePagination(label, page){
+        let pagination=paginationsByLabel[label];
+        const currentPage=page;
+        pagination.currentPage=page;
+        //console.log("label",label,"currentPage",pagination.currentPage,"docCount",pagination.count,"pageSize",pagination.pageSize);
+        const prev=document.getElementById("previousDocPage_"+label);
         const prevA=prev.getElementsByTagName("a")[0];
         if (currentPage>0){
             prev.classList.remove("disabled");
@@ -101,9 +120,9 @@
             prev.classList.add("disabled");
             prevA.classList.add("disabled");
         }
-        const next=document.getElementById("nextDocPage");
+        const next=document.getElementById("nextDocPage_"+label);
         const nextA=next.getElementsByTagName("a")[0];
-        const lastPage=Math.ceil(docCount/pageSize)-1;
+        const lastPage=Math.ceil(pagination.count/pagination.pageSize)-1;
         if (currentPage<lastPage){
             next.classList.remove("disabled");
             nextA.classList.remove("disabled");
@@ -112,7 +131,7 @@
             nextA.classList.add("disabled");
         }
         
-        const curr=document.getElementById("currentDocPage");
+        const curr=document.getElementById("currentDocPage_"+label);
         curr.innerText=(currentPage+1).toString();
 
         document.querySelectorAll(".otherDocPage").forEach(el => el.remove());
@@ -120,7 +139,7 @@
             const prevIndexedPage=document.createElement("div");
             prevIndexedPage.className="pagination-item short otherDocPage";
             const prevIndexedPageA=document.createElement("a");
-            prevIndexedPageA.href="javascript:goToDocPage(0)";
+            prevIndexedPageA.href="javascript:goToDocPage('"+label+"',0)";
             prevIndexedPageA.innerText="1";
             prevIndexedPage.appendChild(prevIndexedPageA);
             prev.parentNode.insertBefore(prevIndexedPage,prev.nextSibling);
@@ -139,7 +158,7 @@
             const nextIndexedPage=document.createElement("div");
             nextIndexedPage.className="pagination-item short otherDocPage";
             const nextIndexedPageA=document.createElement("a");
-            nextIndexedPageA.href="javascript:goToDocPage("+lastPage+")";
+            nextIndexedPageA.href="javascript:goToDocPage('"+label+"',"+lastPage+")";
             nextIndexedPageA.innerText=(lastPage+1).toString();
             nextIndexedPage.appendChild(nextIndexedPageA);
             next.parentNode.insertBefore(nextIndexedPage,next);
@@ -158,37 +177,43 @@
 
     
 
-    function goToDocPage(page){
-        loadList(page*pageSize).then(updatePagination(page));
+    function goToDocPage(label, page){
+        let pagination=paginationsByLabel[label];
+        pagination.loadList(label, page*pagination.pageSize).then(updatePagination(label,page));
     }
 
 
-    function previousDocPage(){
+    function previousDocPage(label){
+        let currentPage=paginationsByLabel[label].currentPage;
         if (currentPage>0){
-            goToDocPage(currentPage-1);
+            goToDocPage(label, currentPage-1);
         }
     }
 
-    function nextDocPage(){
-        if (currentPage<Math.ceil(docCount/pageSize)){
-            goToDocPage(currentPage+1);
+    function nextDocPage(label){
+        let pagination=paginationsByLabel[label];
+        let currentPage=pagination.currentPage;
+        if (currentPage<Math.ceil(pagination.count/pagination.pageSize)){
+            goToDocPage(label,currentPage+1);
         }
     }
 
-    async function resetDocList(queryOptions,addListener=true){
-        if (searchDocs!=null && addListener){
-            searchDocs.addEventListener("input", function(e){
-                clearTimeout(timeout);
-                timeout = setTimeout(function () {
-                    search=searchDocs.value;
-                    resetDocList(queryOptions,false);
+    async function resetDocList(pagination,addListener=true){
+        paginationsByLabel[pagination.label]=pagination;
+        
+        if (pagination.searchField!=null && addListener){
+            pagination.searchField.addEventListener("input", function(e){
+                clearTimeout(pagination.timeout);
+                pagination.timeout = setTimeout(function () {
+                    pagination.searchText=pagination.searchField.value;
+                    resetDocList(pagination,false);
                 }, 1000);
             }, false);
         }
-        loadCount(queryOptions).then(data=>{
-            docCount=data;
-            showDocCount(docCount);
-            loadList(queryOptions,0).then(updatePagination(0));
+        loadCount(pagination).then(data=>{
+            pagination.count=data;
+            pagination.onCount(pagination);
+            pagination.loadList(pagination.label, 0).then(updatePagination(pagination.label,0));
         });
     }
 

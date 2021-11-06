@@ -10,12 +10,15 @@ use std::fs::{read,create_dir_all, remove_file};
 use crate::model::{Document,DocumentInfo};
 use crate::schema::documents::dsl::documents;
 use crate::schema::documents as docs;
+use crate::schema::accesses::dsl::accesses;
+use crate::schema::accesses as accs;
 use rocket::serde::{Deserialize,Serialize};
 
 use uuid::Uuid;
 
 use chrono::Utc;
 use diesel::prelude::*;
+use diesel::dsl::exists;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -99,7 +102,12 @@ async fn get_doc(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Json<D
     let real_uuid=Uuid::parse_str(uuid)?;
   
     let mut docs=conn.run(move |c| {
-        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0)).load::<Document>(c)
+        documents.filter(docs::id.eq(real_uuid))
+        .filter(docs::owner.eq(userid.0)
+            .or(exists(accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(userid.0))))
+        )
+            
+        .load::<Document>(c)
     }).await?;
     match docs.pop(){
         None => Err(StructuredError::not_found("Document not found")),
@@ -113,7 +121,8 @@ async fn get_doc_info(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<J
     let real_uuid=Uuid::parse_str(uuid)?;
   
     let mut docs=conn.run(move |c| {
-        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0))
+        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0)
+                .or(exists(accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(userid.0)))))
             .select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size))
             .load::<DocumentInfo>(c)
     }).await?;
@@ -129,7 +138,8 @@ async fn get_doc_data(userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<D
     let real_uuid=Uuid::parse_str(uuid)?;
   
     let mut docs=conn.run(move |c| {
-        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0))
+        documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0)
+            .or(exists(accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(userid.0)))))
             .load::<Document>(c)
     }).await?;
     match docs.pop(){
@@ -179,6 +189,9 @@ async fn list_docs(userid: UserId, conn: MainDbConn
         }
         if owner {
             query = query.filter(docs::owner.eq(userid.0));
+        } else {
+            query = query.filter(docs::owner.eq(userid.0)
+             .or(docs::id.eq_any(accesses.filter(accs::user_id.eq(userid.0)).select(accs::document_id))));
         }
         let real_order=order.unwrap_or_else(|| DocumentOrder::Recent);
         query =  
@@ -253,6 +266,9 @@ async fn count_docs(userid: UserId, conn: MainDbConn
         }
         if owner {
             query = query.filter(docs::owner.eq(userid.0));
+        } else {
+            query = query.filter(docs::owner.eq(userid.0)
+                .or(docs::id.eq_any(accesses.filter(accs::user_id.eq(userid.0)).select(accs::document_id))));
         }
 
         if distinct {

@@ -1,3 +1,4 @@
+{% import "macros" as macros %}
 <!DOCTYPE html>
 <html>
     <head>
@@ -36,18 +37,24 @@
                         {% include "toast" %}
                     </div>
                 </div>
-                <div class="row" id="docHeaderRow">
+                <div class="row" id="docHeaderRow_doc_list">
                     <div class="col-6">
                        <h6 id="docCountHeader"></h6>
                     </div>
                     <div class="col-6">
-                        <input type="search" placeholder="Search for documents" id="searchDocs"/>
+                        <input type="search" placeholder="Search for documents" id="searchDocs_doc_list"/>
                      </div>
                 </div>
-                {% include "doc_list" %}
+                <div class="row">
+                    <div class="col-12" >
+                        {{ macros::pagination(label="doc_list") }}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
+    {% include "list" %}
 
     <script>
 
@@ -104,27 +111,27 @@
                
                 uploadInput.value=null;
                 updateSize.call(uploadInput);
-                resetDocList({'owner':true,'distinct':true});
+                resetDocList(newPagination());
             });
         }
 
         uploadButton.addEventListener("click", uploadFiles, false);
 
-        function showDocCount(docCount){
+        function showDocCount(pagination){
             let txt="You have no documents yet";
-            if (docCount==1){
+            if (pagination.count==1){
                 txt="You have only 1 document";
-            } else if (docCount>1){
-                txt="You have " +docCount.toString()+" documents (uniquely named)";
+            } else if (pagination.count>1){
+                txt="You have " +pagination.count.toString()+" documents (uniquely named)";
             }
-            if (search.length>0){
+            if (pagination.searchText && pagination.searchText.length>0){
                 txt+=" matching your query";
             }
     
             document.getElementById('docCountHeader').textContent=txt;
         }
 
-        resetDocList({'owner':true,'distinct':true});
+        resetDocList(newPagination());
 
         let deleted=document.cookie.split('; ').find(row => row.startsWith('deleted'));
         if (deleted){
@@ -133,6 +140,12 @@
                 showToast(doc_name+" successfully deleted!");
                 document.cookie="deleted=; expires=Thu, 01 Jan 1970 00:00:01 GMT;Secure";
             }
+        }
+
+        function newPagination(){
+            let pagination = new Pagination('doc_list','/api/docs/count', {'owner':true,'distinct':true});
+            pagination.onCount=showDocCount;
+            return pagination;
         }
     </script>
 
