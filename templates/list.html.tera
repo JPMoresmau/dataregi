@@ -1,12 +1,5 @@
 
 <script>
-    /*const pageSize=10;
-    let currentPage=0; 
-    let docCount = 0;
-    
-    let timeout = null;
-    const searchDocs=document.getElementById("searchDocs");
-    let search=searchDocs!=null?searchDocs.value:'';*/
 
     class Pagination {
         label;
@@ -19,7 +12,7 @@
         countQuery;
         queryOptions;
         onCount=function(_pagination){};
-        loadList=loadList;
+        loadList=loadDocumentList;
 
         constructor(label, countQuery, queryOptions){
             this.label=label;
@@ -53,14 +46,13 @@
         return response.json();
     }
 
-    async function loadList(label, offset){
+    async function loadDocumentList(label, offset){
         let pagination=paginationsByLabel[label];
         let queryOptions=pagination['queryOptions'];
         let queryObj=Object.assign({'limit':pagination.pageSize,'offset':offset},queryOptions);
                 
         if (pagination.searchText && pagination.searchText.length>0){
             queryObj['name']='*'+pagination.searchText+'*';
-            needAmp=true;
         } 
        
         let query='/api/docs?'+Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
@@ -69,8 +61,8 @@
                 method: 'GET'
             });
         return response.json().then(data=>{
-            document.querySelectorAll(".docLine").forEach(el => el.remove());
             let docHeaderRow=document.getElementById("docHeaderRow_"+label);
+            docHeaderRow.parentNode.querySelectorAll(".docLine").forEach(el => el.remove());
             
             for (const docInfo of data){
                 let docLine=document.createElement("div");
@@ -106,6 +98,9 @@
         });
     }
 
+    
+
+
     function updatePagination(label, page){
         let pagination=paginationsByLabel[label];
         const currentPage=page;
@@ -134,7 +129,7 @@
         const curr=document.getElementById("currentDocPage_"+label);
         curr.innerText=(currentPage+1).toString();
 
-        document.querySelectorAll(".otherDocPage").forEach(el => el.remove());
+        prev.parentNode.querySelectorAll(".otherDocPage").forEach(el => el.remove());
         if (currentPage>0){
             const prevIndexedPage=document.createElement("div");
             prevIndexedPage.className="pagination-item short otherDocPage";

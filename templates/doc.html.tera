@@ -37,6 +37,11 @@
                     </div>
                 </div>
                 <div class="row">
+                    <div class="col-12">
+                        <em id="ownershipStatus"></em>
+                    </div>
+                </div>
+                <div class="row">
                     <div class="col-6">
                         <div>
                             <div class="row" id="docHeaderRow_version_list">
@@ -47,6 +52,33 @@
                             <div class="row">
                                 <div class="col-12">
                                    {{ macros::pagination(label="version_list") }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div>
+                            <div class="row">
+                                <div class="col-9">
+                                    <h6 id="accessCountHeader"></h6>
+                                </div>
+                                <div class="col-3">
+                                    <span style="text-align: end;">
+                                        <a href="javascript:showSharing()"><i id="sharing_button" class="fas fa-wrapper fa-plus" title="Add an email address to share with"></i></a>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="row" id="docHeaderRow_access_list">
+                                <div class="col-9" style="display:none">
+                                   <input id="add_sharing" type="text" placeholder="Add an email address to share with">
+                                </div>
+                                <div class="col-3" style="display:none">
+                                   <button class="form-group-btn btn-link" onclick="addSharing()">Add</button>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-12">
+                                   {{ macros::pagination(label="access_list") }}
                                 </div>
                             </div>
                         </div>
@@ -67,7 +99,7 @@
                         <i class="fa-wrapper fa fa-times"></i>
                     </span>
                 </a>
-                <div class="modal-title">Confirm deletion</div>
+                <div class="modal-title">Confirm document deletion</div>
             </div>
             <div class="modal-body">
                 <div id="delete_modal_text">
@@ -87,11 +119,42 @@
         </div>
     </div>
 
+    <div class="modal modal-animated--zoom-in" id="unshare-modal">
+        <a href="#doc_unshare" class="modal-overlay close-btn" aria-label="Close"></a>
+        <div class="modal-content" role="document">
+            <div class="modal-header">
+                <a href="#doc_unshare" class="u-pull-right" aria-label="Close">
+                    <span class="icon">
+                        <i class="fa-wrapper fa fa-times"></i>
+                    </span>
+                </a>
+                <div class="modal-title">Confirm sharing deletion</div>
+            </div>
+            <div class="modal-body">
+                <div id="unshare_modal_text">
+                    
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="form-section u-text-right">
+                    <a href="#doc_unshare">
+                        <button class="btn btn-small u-inline-block">Cancel</button>
+                    </a>
+                    <a href="#doc_unshare">
+                        <button class="btn-info btn-small u-inline-block" id="unshare_confirm" >Confirm</button>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% include "list" %}
 
     <script>
         const doc_id='{{ doc_id }}';
+        const user_id='{{ user_id }}';
         let doc_name='';
+        let is_owner=false;
 
         async function loadDoc(id){
             if (id){
@@ -131,15 +194,73 @@
 
                     document.getElementById("delete_modal_text").innerText="Are you sure you want to delete "+docInfo['name']+"?";
 
+                    is_owner=docInfo['owner']==user_id;
+                    let ownerStatus="This document has been shared to you";
+                    if (is_owner){
+                        ownerStatus="You are the owner of this document";
+                    } 
+                    document.getElementById('ownershipStatus').innerText=ownerStatus;
+
                     let pagination=new Pagination('version_list','/api/docs/count',{'owner':false,'distinct':false,'name':docInfo['name'],'except':id,'queryDate':docDate});
                     pagination.onCount=showDocCount;
                     resetDocList(pagination,false);
+
+                    showAccesses();
                 }
                 
                
             } else {
                 showError("No document ID provided");
             }
+        }
+
+        async function loadAccessList(label, offset){
+            let pagination=paginationsByLabel[label];
+            let queryOptions=pagination['queryOptions'];
+            let queryObj=Object.assign({'limit':pagination.pageSize,'offset':offset},queryOptions);
+                    
+            if (pagination.searchText && pagination.searchText.length>0){
+                queryObj['name']='*'+pagination.searchText+'*';
+                needAmp=true;
+            } 
+            let uuid=queryObj['id'];
+            delete queryObj['id'];
+            let query='/api/accesses/'+uuid+'?'+Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
+    
+            const response = await fetch(query, {
+                    method: 'GET'
+                });
+            return response.json().then(data=>{
+                let docHeaderRow=document.getElementById("docHeaderRow_"+label);
+                docHeaderRow.parentNode.querySelectorAll(".docLine").forEach(el => el.remove());
+                
+                for (const docInfo of data){
+                    let docLine=document.createElement("div");
+                    docLine.className="row docLine";
+                    let docItem=document.createElement("div");
+                    docItem.className="col-9";
+                    docItem.appendChild(document.createTextNode(docInfo['name']));
+                    docLine.appendChild(docItem);
+                    let details=document.createElement("div");
+                    details.className="col-3";
+                    details.style.textAlign="right";
+                    docLine.appendChild(details);
+                    if (is_owner){
+                        const del = document.createElement("a");
+                        del.href="#unshare-modal";
+                        const deli=document.createElement("i");
+                        deli.className="fas fa-trash fa-wrapper";
+                        deli.title="Remove sharing with "+docInfo['name'];
+                        del.appendChild(deli);
+                        details.appendChild(del);
+                        document.getElementById("unshare_confirm").onclick=function(){removeSharing(docInfo['id']);};
+                        document.getElementById("unshare_modal_text").innerText="Are you sure you want to remove sharing with "+docInfo['name']+"?";
+                    }
+                    //tableRoot.appendChild(docLine);
+                    docHeaderRow.parentNode.insertBefore(docLine, docHeaderRow.nextSibling);
+                    docHeaderRow=docLine;
+                }
+            });
         }
 
         async function deleteDoc(){
@@ -152,6 +273,59 @@
             } else {
                 document.cookie="deleted="+doc_name+"; Secure";
                 document.location="/";
+            }
+        }
+
+        function showSharing(){
+            for (div of document.getElementById('docHeaderRow_access_list').getElementsByTagName("div")){
+                div.style.display='flex';
+            }
+            const sharingButton=document.getElementById("sharing_button");
+            sharingButton.className="fas fa-wrapper fa-minus";
+            sharingButton.parentElement.href="javascript:hideSharing()";
+        }
+
+        function hideSharing(){
+            for (div of document.getElementById('docHeaderRow_access_list').getElementsByTagName("div")){
+                div.style.display='none';
+            }
+            const sharingButton=document.getElementById("sharing_button");
+            sharingButton.className="fas fa-wrapper fa-plus";
+            sharingButton.parentElement.href="javascript:showSharing()";
+        }
+
+
+        function showAccesses(){
+            let paginationAccess=new Pagination('access_list','/api/accesses/'+encodeURIComponent(doc_id)+'/count',{'id':doc_id});
+            paginationAccess.onCount=showAccessCount;
+            paginationAccess.loadList=loadAccessList;
+            resetDocList(paginationAccess,false);
+        }
+
+        async function addSharing(){
+            const email=document.getElementById('add_sharing').value;
+            if (email){
+                const query="/api/accesses/"+encodeURIComponent(doc_id)+"/"+encodeURIComponent(email);
+                const response = await fetch(query, {
+                    method: 'POST'
+                })
+                if (!response.ok){
+                    showError(await response.text());
+                } else {
+                    showAccesses();
+                }
+            }
+        }
+
+        async function removeSharing(user_id){
+            const query="/api/accesses/"+encodeURIComponent(doc_id)+"/"+encodeURIComponent(user_id);
+            const response = await fetch(query, {
+                method: 'DELETE'
+            })
+            if (!response.ok){
+                showError(await response.text());
+            } else {
+                showAccesses();
             }
         }
 
@@ -179,6 +353,17 @@
             }
          
             document.getElementById('docCountHeader').textContent=txt;
+        }
+
+        function showAccessCount(pagination){
+            let txt="Not shared with anybody";
+            if (pagination.count==1){
+                txt="Shared with one other";
+            } else if (pagination.count>1){
+                txt="Shared with " +pagination.count.toString()+" others";
+            }
+         
+            document.getElementById('accessCountHeader').textContent=txt;
         }
 
         loadDoc(doc_id);

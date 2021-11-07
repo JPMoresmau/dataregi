@@ -55,9 +55,13 @@ async fn has_access(document_id:Uuid, user_id: Uuid, conn: &MainDbConn) -> DRRes
 
 #[put("/<uuid>/<user>")]
 async fn add_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Status>{
-    let real_uuid=Uuid::parse_str(uuid)?;
-    let real_userid=Uuid::parse_str(user)?;
 
+    let real_userid=Uuid::parse_str(user)?;
+    add_access_internal(userid,uuid,real_userid,conn).await
+}
+
+async fn add_access_internal(userid: UserId,uuid: &str,real_userid: Uuid, conn: MainDbConn) -> DRResult<Status>{
+    let real_uuid=Uuid::parse_str(uuid)?;
     let accs:i64=conn.run(move |c| {
         accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(real_userid)).count().get_result(c)
     }).await?;
@@ -76,6 +80,27 @@ async fn add_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> D
     }
     Ok(Status::NoContent)
     
+}
+
+#[post("/<uuid>/<email>")]
+async fn add_access_email(userid: UserId,uuid: &str,email: &str, conn: MainDbConn) -> DRResult<Status>{
+    let emails=email.to_string();
+    let ouuid = conn
+                .run(move |c| users.filter(usrs::email.eq(emails)).select(usrs::id).first(c).optional())
+                .await?;
+    let user_id = match ouuid {
+        None=> {
+            let user = User::new_login(email);
+            conn.run(move |c| {
+                diesel::insert_into(users)
+                    .values(&user)
+                    .execute(c)
+                    .map(|_| user.id)
+            }).await?
+        },
+        Some(uuid) => uuid,
+    };
+    add_access_internal(userid,uuid,user_id,conn).await
 }
 
 #[delete("/<uuid>/<user>")]
@@ -104,5 +129,5 @@ async fn remove_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![get_accesses,count_accesses,add_access,remove_access]
+    routes![get_accesses,count_accesses,add_access,add_access_email,remove_access]
 }
