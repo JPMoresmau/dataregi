@@ -20,21 +20,34 @@ table! {
 }
 
 table! {
+    limits (user_id) {
+        user_id -> Uuid,
+        max_documents -> Int4,
+        max_size -> Int8,
+        current_documents -> Int4,
+        current_size -> Int8,
+    }
+}
+
+table! {
     users (id) {
         id -> Uuid,
         email -> Varchar,
         name -> Text,
         created -> Timestamptz,
         last_login -> Nullable<Timestamptz>,
+        site_admin -> Bool,
     }
 }
 
 joinable!(accesses -> documents (document_id));
 joinable!(accesses -> users (user_id));
 joinable!(documents -> users (owner));
+joinable!(limits -> users (user_id));
 
 allow_tables_to_appear_in_same_query!(
     accesses,
     documents,
+    limits,
     users,
 );

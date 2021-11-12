@@ -11,6 +11,7 @@ pub struct User {
     pub name: String,
     pub created: DateTime<Utc>,
     pub last_login: Option<DateTime<Utc>>,
+    pub site_admin: bool,
 }
 
 impl User {
@@ -22,6 +23,7 @@ impl User {
             name:n,
             created: Utc::now(),
             last_login: Some(Utc::now()),
+            site_admin: false,
         }
     }
 
@@ -33,6 +35,7 @@ impl User {
             name:n,
             created: Utc::now(),
             last_login: None,
+            site_admin: false,
         }
     }
 }
@@ -72,4 +75,28 @@ pub struct Access {
     pub document_id: Uuid,
     pub user_id: Uuid,
     pub created: DateTime<Utc>,
+}
+
+#[derive(Queryable, Deserialize, Serialize, Debug)]
+pub struct Limit {
+    pub user_id: Uuid,
+    pub max_documents: i32,
+    pub max_size: i64,
+    pub current_documents: i32,
+    pub current_size: i64,
+}
+
+#[derive(AsChangeset, Deserialize, Serialize, Debug)]
+#[table_name="limits"]
+pub struct LimitForm {
+    pub max_documents: i32,
+    pub max_size: i64,
+}
+
+
+#[derive(AsChangeset, Deserialize, Serialize, Debug)]
+#[table_name="limits"]
+pub struct LimitUpdate {
+    pub current_documents: i32,
+    pub current_size: i64,
 }

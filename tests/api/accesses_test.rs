@@ -1,7 +1,5 @@
-mod common;
-
 use dataregi::{model::{User,Document,DocumentInfo}};
-use common::{setup,with_test_login,upload,delete, json_ok_response};
+use crate::common::{setup,with_test_login,upload,delete, json_ok_response};
 use rocket::http::{ContentType, Status};
 use serial_test::serial;
 
@@ -56,7 +54,7 @@ fn crud() {
     let users_cnt:i64 = json_ok_response(with_test_login(client.get(format!("/api/accesses/{}/count",uuid)), 1)); 
     assert_eq!(0,users_cnt);
 
-    delete(&client, &vec![uuid]);
+    delete(&client, &[uuid]);
 }
 
 #[test]
@@ -93,7 +91,7 @@ fn add_email() {
     let users_cnt:i64 = json_ok_response(with_test_login(client.get(format!("/api/accesses/{}/count",uuid)), 1)); 
     assert_eq!(2,users_cnt);
     
-    delete(&client, &vec![uuid]);
+    delete(&client, &[uuid]);
 }
 
 
@@ -124,7 +122,7 @@ fn forbidden_accesses() {
     assert_eq!(response.status(),Status::NoContent);
     
     // delete document should delete accesses
-    delete(&client, &vec![uuid]);
+    delete(&client, &[uuid]);
 }
 
 #[test]
@@ -153,7 +151,7 @@ fn paging_accesses() {
     assert_eq!(1,users.len());
     assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb34",&users[0].id.to_string());
    
-    delete(&client, &vec![uuid]);
+    delete(&client, &[uuid]);
 }
 
 #[test]
@@ -190,6 +188,6 @@ fn get_docs_via_access() {
     let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 2));
     assert_eq!(1,docs.len());
 
-    delete(&client, &vec![uuid]);
+    delete(&client, &[uuid]);
 
 }

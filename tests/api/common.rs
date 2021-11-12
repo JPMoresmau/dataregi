@@ -1,4 +1,3 @@
-use dataregi;
 use rocket::serde::DeserializeOwned;
 use rocket::local::blocking::{Client,LocalRequest};
 use std::env;
@@ -12,13 +11,11 @@ pub fn setup() -> Client{
     env::set_var("ROCKET_PROFILE","test");
 
     let rocket = dataregi::rocket();
-    let client = Client::tracked(rocket).unwrap();
-
-    client
+    Client::tracked(rocket).unwrap()
 }
 
 pub fn with_test_login(req: LocalRequest, user_idx: u8) -> LocalRequest {
-    req.private_cookie(Cookie::new("id", format!("b9518d55-3256-4b96-81d0-65b1d7c4fb3{}",user_idx)))
+    req.private_cookie(Cookie::new("user", format!("{{\"user_id\":\"b9518d55-3256-4b96-81d0-65b1d7c4fb3{}\",\"site_admin\":{}}}",user_idx, user_idx==1)))
 }
 
 pub fn do_upload(client: &Client, path: &str) -> DocumentUpload {

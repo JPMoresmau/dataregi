@@ -1,8 +1,6 @@
-mod common;
-
 use dataregi::{docs::DocumentUpload, model::{Document,DocumentInfo}};
 use std::fs;
-use common::{setup,with_test_login, do_upload,upload,delete,json_ok_response};
+use crate::common::{setup,with_test_login, do_upload,upload,delete,json_ok_response};
 use rocket::http::{ContentType, Status};
 use serial_test::serial;
 
@@ -133,7 +131,7 @@ fn list(){
     assert_eq!(doci1.name,"1sheet1col.ods");
     assert_eq!(doci2.name,"1sheet1row.ods");
 
-    delete(&client, &vec![uuid1,uuid2,uuid3]);
+    delete(&client, &[uuid1,uuid2,uuid3]);
 
     let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(0,docs.len());
@@ -189,7 +187,7 @@ fn search(){
     assert_eq!(doci2.name,"1sheet1col.ods");
     assert_eq!(doci3.name,"1sheet1row.ods");
 
-    delete(&client, &vec![uuid1,uuid2,uuid3]);
+    delete(&client, &[uuid1,uuid2,uuid3]);
 
     let docs:Vec<DocumentInfo> = json_ok_response(with_test_login(client.get("/api/docs/"), 1));
     assert_eq!(0,docs.len());
@@ -225,7 +223,7 @@ fn count(){
     assert_eq!(1,cnt);
 
 
-    delete(&client, &vec![uuid1,uuid2,uuid3]);
+    delete(&client, &[uuid1,uuid2,uuid3]);
     let cnt:i64 = json_ok_response(with_test_login(client.get("/api/docs/count?owner=true"), 1));
     assert_eq!(0,cnt);
 }
@@ -275,7 +273,7 @@ fn distinct(){
     assert_eq!(doci1.id,uuid3);
     assert_eq!(doci2.id,uuid2);
 
-    delete(&client, &vec![uuid1]);
+    delete(&client, &[uuid1]);
 
     let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?distinct=true"), 1));
     assert_eq!(2,docs.len());
@@ -285,7 +283,7 @@ fn distinct(){
     assert_eq!(doci1.id,uuid3);
     assert_eq!(doci2.id,uuid2);
 
-    delete(&client, &vec![uuid2,uuid3]);
+    delete(&client, &[uuid2,uuid3]);
 }
 
 #[test]
@@ -328,7 +326,7 @@ fn versions(){
     let cnt:i64 = json_ok_response(with_test_login(client.get(format!("/api/docs/count?owner=true&name=1sheet1cell.ods&except={}",uuid2)), 1));
     assert_eq!(1,cnt);
 
-    delete(&client, &vec![uuid1,uuid2]);
+    delete(&client, &[uuid1,uuid2]);
 }
 
 #[test]
@@ -346,5 +344,5 @@ fn detect_duplicate(){
         },
         du => panic!("Unexpect upload: {:?}",du),
     };
-    delete(&client, &vec![uuid1]);
+    delete(&client, &[uuid1]);
 }

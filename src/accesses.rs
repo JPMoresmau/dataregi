@@ -17,10 +17,10 @@ use diesel::prelude::*;
 
 
 #[get("/<uuid>?<limit>&<offset>")]
-async fn get_accesses(_userid: UserId,uuid: &str, conn: MainDbConn,limit: Option<usize>, offset: Option<i64>) -> DRResult<Json<Vec<User>>>{
+async fn get_accesses(_ctx: UserContext,uuid: &str, conn: MainDbConn,limit: Option<usize>, offset: Option<i64>) -> DRResult<Json<Vec<User>>>{
     let real_uuid=Uuid::parse_str(uuid)?;
-    let real_limit=limit.unwrap_or_else(|| 10) as i64;
-    let real_offset=offset.unwrap_or_else(|| 0);
+    let real_limit=limit.unwrap_or(10) as i64;
+    let real_offset=offset.unwrap_or(0);
 
     let usrs:Vec<User>=conn.run(move |c| {
         users.filter(usrs::id.eq_any(accesses.filter(accs::document_id.eq(real_uuid)).select(accs::user_id)))
@@ -32,7 +32,7 @@ async fn get_accesses(_userid: UserId,uuid: &str, conn: MainDbConn,limit: Option
 }
 
 #[get("/<uuid>/count")]
-async fn count_accesses(_userid: UserId,uuid: &str, conn: MainDbConn) -> DRResult<Json<i64>>{
+async fn count_accesses(_ctx: UserContext,uuid: &str, conn: MainDbConn) -> DRResult<Json<i64>>{
     let real_uuid=Uuid::parse_str(uuid)?;
   
     let usrs:i64=conn.run(move |c| {
@@ -54,19 +54,19 @@ async fn has_access(document_id:Uuid, user_id: Uuid, conn: &MainDbConn) -> DRRes
 }
 
 #[put("/<uuid>/<user>")]
-async fn add_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Status>{
+async fn add_access(ctx: UserContext,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Status>{
 
     let real_userid=Uuid::parse_str(user)?;
-    add_access_internal(userid,uuid,real_userid,conn).await
+    add_access_internal(ctx,uuid,real_userid,conn).await
 }
 
-async fn add_access_internal(userid: UserId,uuid: &str,real_userid: Uuid, conn: MainDbConn) -> DRResult<Status>{
+async fn add_access_internal(ctx: UserContext,uuid: &str,real_userid: Uuid, conn: MainDbConn) -> DRResult<Status>{
     let real_uuid=Uuid::parse_str(uuid)?;
     let accs:i64=conn.run(move |c| {
         accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(real_userid)).count().get_result(c)
     }).await?;
     if accs==0{
-        if !has_access(real_uuid,userid.0,&conn).await?{
+        if !has_access(real_uuid,ctx.user_id,&conn).await?{
             return forbidden();
         }
         let acc=Access{document_id: real_uuid,
@@ -83,7 +83,7 @@ async fn add_access_internal(userid: UserId,uuid: &str,real_userid: Uuid, conn: 
 }
 
 #[post("/<uuid>/<email>")]
-async fn add_access_email(userid: UserId,uuid: &str,email: &str, conn: MainDbConn) -> DRResult<Status>{
+async fn add_access_email(ctx: UserContext,uuid: &str,email: &str, conn: MainDbConn) -> DRResult<Status>{
     let emails=email.to_string();
     let ouuid = conn
                 .run(move |c| users.filter(usrs::email.eq(emails)).select(usrs::id).first(c).optional())
@@ -100,20 +100,20 @@ async fn add_access_email(userid: UserId,uuid: &str,email: &str, conn: MainDbCon
         },
         Some(uuid) => uuid,
     };
-    add_access_internal(userid,uuid,user_id,conn).await
+    add_access_internal(ctx,uuid,user_id,conn).await
 }
 
 #[delete("/<uuid>/<user>")]
-async fn remove_access(userid: UserId,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Status>{
+async fn remove_access(ctx: UserContext,uuid: &str,user: &str, conn: MainDbConn) -> DRResult<Status>{
     let real_uuid=Uuid::parse_str(uuid)?;
     let real_userid=Uuid::parse_str(user)?;
 
     let owner:i64=
-        if userid.0 == real_userid {
+        if ctx.user_id == real_userid {
             1
         } else {
             conn.run(move |c| {
-            documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(userid.0)).count().get_result(c)
+            documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(ctx.user_id)).count().get_result(c)
         }).await?
     };
 

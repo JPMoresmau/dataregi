@@ -21,19 +21,26 @@ use std::fmt;
 use std::error::Error as StdError;
 use rocket::serde::json::Json;
 
+pub const COOKIE: &str = "user";
+
 #[derive(Serialize,Debug)]
 pub struct IndexContext<'r> {
     pub error: &'r str,
     pub message: &'r str,
 }
 
-#[derive(Serialize,Debug)]
-pub struct UserContext<'r> {
-    pub user_id: &'r Uuid,
+#[derive(Clone,Serialize,Deserialize,Debug)]
+pub struct UserContext {
+    pub user_id: Uuid,
+    pub site_admin: bool,
 }
 
-#[derive(Clone, Debug)]
-pub struct UserId(pub Uuid);
+impl UserContext {
+    pub fn new(user_id: Uuid, site_admin: bool) -> Self {
+        UserContext{user_id, site_admin}
+    }
+}
+
 
 #[derive(Serialize,Debug)]
 pub struct DocumentContext<'r> {

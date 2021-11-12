@@ -17,7 +17,6 @@ use rocket::State;
 use rocket::{Build, Rocket};
 use rocket_dyn_templates::Template;
 use std::path::{Path, PathBuf};
-
 use lettre::Message;
 use rusoto_core::Region;
 use rusoto_ses::{RawMessage, SendRawEmailRequest, Ses, SesClient};
@@ -25,8 +24,6 @@ use std::env;
 
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use uuid::Uuid;
-
 use chrono::Utc;
 use diesel::prelude::*;
 
@@ -36,9 +33,12 @@ use base::*;
 pub mod model;
 use model::User;
 pub mod schema;
+use schema::limits::user_id;
+use schema::limits::dsl::limits as lts;
 
 pub mod accesses;
 pub mod docs;
+pub mod limits;
 
 #[get("/<path..>", rank = 3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
@@ -50,28 +50,27 @@ async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
 
 #[get("/", rank = 2)]
 pub fn index(flash: Option<FlashMessage>) -> Template {
-    let ctx = IndexContext { error: "", message: &flash.map(|f| format!("{}",f.message())).unwrap_or_else(|| String::new()) };
+    let ctx = IndexContext { error: "", message: &flash.map(|f| f.message().to_string()).unwrap_or_else(String::new) };
     Template::render("index", &ctx)
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for UserId {
+impl<'r> FromRequest<'r> for UserContext {
     type Error = std::convert::Infallible;
 
-    async fn from_request(request: &'r Request<'_>) -> request::Outcome<UserId, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<UserContext, Self::Error> {
         request
             .cookies()
-            .get_private("id")
-            .map(|s| Uuid::parse_str(s.value()).map(UserId).ok())
+            .get_private(COOKIE)
+            .map(|s| serde_json::from_str(s.value()).ok())
             .flatten()
             .or_forward(())
     }
 }
 
 #[get("/")]
-pub fn index_user(userid: UserId) -> Template {
-    let ctx = UserContext { user_id: &userid.0 };
-    Template::render("home", &ctx)
+pub fn index_user(userid: UserContext) -> Template {
+    Template::render("home", &userid)
 }
 
 #[post("/loginEmail", data = "<email>")]
@@ -144,30 +143,34 @@ async fn login_from_token(
 
             match rouser {
                 Ok(ouser) => {
-                    let ruuid = match ouser {
+                    let rctx = match ouser {
                         None => {
                             let user = User::new_login(reg.address);
                             conn.run(move |c| {
-                                diesel::insert_into(users)
+                                let ctx = diesel::insert_into(users)
                                     .values(&user)
                                     .execute(c)
-                                    .map(|_| user.id)
+                                    .map(|_| UserContext::new(user.id,false));
+                                diesel::insert_into(lts)
+                                    .values(user_id.eq(user.id))
+                                    .execute(c)?;
+                                ctx
                             })
                             .await
-                        }
+                        },
                         Some(user) => {
                             conn.run(move |c| {
                                 diesel::update(&user)
                                     .set(last_login.eq(Utc::now()))
                                     .execute(c)
-                                    .map(|_| user.id)
+                                    .map(|_|UserContext::new(user.id,user.site_admin))
                             })
                             .await
-                        }
+                        },
                     };
-                    match ruuid {
-                        Ok(uuid) => {
-                            let c = Cookie::build("id", uuid.to_string())
+                    match rctx {
+                        Ok(ctx) => {
+                            let c = Cookie::build(COOKIE, serde_json::to_string(&ctx).unwrap())
                                 .secure(true)
                                 .same_site(SameSite::Lax) // so it works from email links
                                 .finish();
@@ -196,7 +199,7 @@ async fn login_from_token(
 
 #[get("/logout")]
 async fn logout(cookies: &CookieJar<'_>) -> Flash<Redirect> {
-    cookies.remove_private(Cookie::named("id"));
+    cookies.remove_private(Cookie::named(COOKIE));
     Flash::success(Redirect::to("/"), "Successfully logged out.")
 }
 
@@ -241,8 +244,8 @@ async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
 }
 
 #[get("/document?<id>")]
-pub fn single_doc(userid: UserId,id: &str) -> Template {
-    let ctx = DocumentContext { user_id: &userid.0, doc_id: id };
+pub fn single_doc(ctx: UserContext,id: &str) -> Template {
+    let ctx = DocumentContext { user_id: &ctx.user_id, doc_id: id };
     Template::render("doc", &ctx)
 }
 
@@ -264,6 +267,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
         )
         .mount("/api/docs",docs::routes())
         .mount("/api/accesses",accesses::routes())
+        .mount("/api/limits",limits::routes())
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
         .attach(Template::fairing())

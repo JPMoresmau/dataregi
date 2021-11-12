@@ -1,6 +1,4 @@
-mod common;
-
-use common::{setup,with_test_login};
+use crate::common::{setup,with_test_login};
 use rocket::http::{ContentType, Status};
 
 #[test]

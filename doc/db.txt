@@ -17,6 +17,7 @@
 	- name (not unique) (unique key 1)
 	- timestamp (unique key 1)
 	- owner id (unique key 1)
+	- org id
 	- mime
 	- data (binary)
 	- hash (non unique index)
@@ -28,4 +29,9 @@
 	- user id (index)
 	- document id (index)
 	- last access timestamp (nullable)
-	
+- limits
+	- user id
+	- max documents
+	- max size
+	- current documents
+	- current size
