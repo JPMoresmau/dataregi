@@ -43,7 +43,7 @@ impl UserContext {
     }
 
     pub fn new_in_org(user_id: Uuid,members: &[Member], site_admin: bool) -> Self {
-        UserContext{user_id, site_admin,org_members:members.into_iter().map(|m| Membership{org_id:m.org_id,org_admin:m.org_admin}).collect()}
+        UserContext{user_id, site_admin,org_members:members.iter().map(|m| Membership{org_id:m.org_id,org_admin:m.org_admin}).collect()}
     }
 }
 

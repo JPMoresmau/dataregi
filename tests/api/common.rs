@@ -1,3 +1,4 @@
+use dataregi::model::Member;
 use rocket::serde::DeserializeOwned;
 use rocket::local::blocking::{Client,LocalRequest};
 use std::env;
@@ -19,7 +20,20 @@ pub fn with_test_login(req: LocalRequest, user_idx: u8) -> LocalRequest {
     req.private_cookie(Cookie::new("user", serde_json::to_string(&ctx).unwrap()))
 }
 
+pub fn with_org_login<'a>(req: LocalRequest<'a>, user_idx: u8, members: &[Member]) -> LocalRequest<'a> {
+    let uuid=Uuid::parse_str(&format!("b9518d55-3256-4b96-81d0-65b1d7c4fb3{}",user_idx)).unwrap();
+    let ctx=UserContext::new_in_org(uuid,
+            members, 
+    user_idx==1);
+    req.private_cookie(Cookie::new("user", serde_json::to_string(&ctx).unwrap()))
+}
+
 pub fn do_upload(client: &Client, path: &str) -> DocumentUpload {
+    do_upload_org(client, path, None)
+}
+
+pub fn do_upload_org(client: &Client, path: &str, member: Option<Member>) -> DocumentUpload {
+
     let file = fs::read(path).unwrap();
     let mut cnt=vec![];
 
@@ -30,7 +44,12 @@ pub fn do_upload(client: &Client, path: &str) -> DocumentUpload {
     cnt.extend(&file);
     cnt.extend("\r\n-----------------------------3511489321811197009899980000--\r\n".as_bytes()); 
 
-    let req = with_test_login(client.post("/api/docs"), 1)
+    let url = match &member {
+        None=>String::from("/api/docs"),
+        Some(m)=>format!("/api/docs?org={}",m.org_id),
+    };
+
+    let req = with_org_login(client.post(url), 1,&member.into_iter().collect::<Vec<Member>>())
         .header(ContentType::with_params("multipart", "form-data", ("boundary", "---------------------------3511489321811197009899980000")))
         .header(Header::new("Content-Length",format!("{}",cnt.len())))
         .body(cnt);
@@ -48,6 +67,13 @@ pub fn do_upload(client: &Client, path: &str) -> DocumentUpload {
 
 pub fn upload(client: &Client, path: &str) -> Uuid {
     match do_upload(client,path) {
+        DocumentUpload::Ok{id} => id,
+        du => panic!("unexpected upload result:{:?}",du),
+    }
+}
+
+pub fn upload_org(client: &Client, path: &str, member: Member) -> Uuid {
+    match do_upload_org(client,path,Some(member)) {
         DocumentUpload::Ok{id} => id,
         du => panic!("unexpected upload result:{:?}",du),
     }

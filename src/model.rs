@@ -110,7 +110,7 @@ pub struct Organization {
     pub created: DateTime<Utc>,
 }
 
-#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug, Eq, PartialEq)]
+#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug, Eq, PartialEq, Clone)]
 #[primary_key(user_id, org_id)]
 pub struct Member {
     pub user_id: Uuid,

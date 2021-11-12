@@ -98,7 +98,7 @@ async fn upload_doc(ctx: UserContext,org:Option<&str>,mut upload: Form<Upload<'_
                         name: short_name,
                         created: Utc::now(),
                         owner: ctx.user_id,
-                        org_id: org_id,
+                        org_id,
                         mime: file.content_type().map(|ct| format!("{}",ct)),
                         size: data.len() as i64,
                         data,
