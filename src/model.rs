@@ -46,6 +46,7 @@ pub struct Document {
     pub name: String,
     pub created: DateTime<Utc>,
     pub owner: Uuid,
+    pub org_id: Option<Uuid>,
     pub mime: Option<String>,
     pub size: i64,
     pub data: Vec<u8>,
@@ -58,6 +59,7 @@ pub struct DocumentInfo {
     pub name: String,
     pub created: DateTime<Utc>,
     pub owner: Uuid,
+    pub org_id: Option<Uuid>,
     pub mime: Option<String>,
     pub size: i64,
 }
@@ -100,3 +102,20 @@ pub struct LimitUpdate {
     pub current_documents: i32,
     pub current_size: i64,
 }
+
+#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug)]
+pub struct Organization {
+    pub id: Uuid,
+    pub name: String,
+    pub created: DateTime<Utc>,
+}
+
+#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug, Eq, PartialEq)]
+#[primary_key(user_id, org_id)]
+pub struct Member {
+    pub user_id: Uuid,
+    pub org_id: Uuid,
+    pub created: DateTime<Utc>,
+    pub org_admin: bool
+}
+

@@ -21,6 +21,7 @@ use uuid::Uuid;
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::dsl::exists;
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -39,13 +40,23 @@ pub enum DocumentUpload {
     LimitsReached,
 }
 
-#[post("/", data = "<upload>")]
-async fn upload_doc(ctx: UserContext,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<DocumentUpload>>> {
+#[post("/?<org>", data = "<upload>")]
+async fn upload_doc(ctx: UserContext,org:Option<&str>,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<DocumentUpload>>> {
     let mut uuids=vec![];
-    println!("files:{}",upload.files.len());
+    //println!("files:{}",upload.files.len());
+    let org_id=match org {
+        Some(u)=>Uuid::parse_str(u).map(Some),
+        None=>Ok(None),
+    }?;
+    if let Some(oid) = org_id {
+        if !ctx.org_members.iter().any(|m| m.org_id==oid){
+            return forbidden();
+        }
+    }
+
     for file in upload.files.iter_mut() {
         if let Some(name) = file.name() {
-            println!("name:{}",name);
+            //println!("name:{}",name);
             let mut full=PathBuf::new();
             full.push(&config.temp_dir.original());
             full.push(&ctx.user_id.to_string());
@@ -87,6 +98,7 @@ async fn upload_doc(ctx: UserContext,mut upload: Form<Upload<'_>>, config: &Stat
                         name: short_name,
                         created: Utc::now(),
                         owner: ctx.user_id,
+                        org_id: org_id,
                         mime: file.content_type().map(|ct| format!("{}",ct)),
                         size: data.len() as i64,
                         data,
@@ -119,6 +131,7 @@ async fn get_doc(ctx: UserContext,uuid: &str, conn: MainDbConn) -> DRResult<Json
     let mut docs=conn.run(move |c| {
         documents.filter(docs::id.eq(real_uuid))
         .filter(docs::owner.eq(ctx.user_id)
+            .or(docs::org_id.eq_any(ctx.org_members.iter().map(|m| m.org_id)))
             .or(exists(accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(ctx.user_id))))
         )
             
@@ -137,8 +150,9 @@ async fn get_doc_info(ctx: UserContext,uuid: &str, conn: MainDbConn) -> DRResult
   
     let mut docs=conn.run(move |c| {
         documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(ctx.user_id)
+                .or(docs::org_id.eq_any(ctx.org_members.iter().map(|m| m.org_id)))
                 .or(exists(accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(ctx.user_id)))))
-            .select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size))
+            .select((docs::id,docs::name,docs::created,docs::owner,docs::org_id,docs::mime,docs::size))
             .load::<DocumentInfo>(c)
     }).await?;
     match docs.pop(){
@@ -154,6 +168,7 @@ async fn get_doc_data(ctx: UserContext,uuid: &str, conn: MainDbConn) -> DRResult
   
     let mut docs=conn.run(move |c| {
         documents.filter(docs::id.eq(real_uuid)).filter(docs::owner.eq(ctx.user_id)
+            .or(docs::org_id.eq_any(ctx.org_members.iter().map(|m| m.org_id)))
             .or(exists(accesses.filter(accs::document_id.eq(real_uuid)).filter(accs::user_id.eq(ctx.user_id)))))
             .load::<Document>(c)
     }).await?;
@@ -188,6 +203,7 @@ async fn delete_doc(ctx: UserContext,uuid: &str, conn: MainDbConn) -> DRResult<S
     
 }
 
+
 #[allow(clippy::too_many_arguments)]
 #[get("/?<name>&<order>&<limit>&<owner>&<offset>&<distinct>&<except>")]
 async fn list_docs(ctx: UserContext, conn: MainDbConn
@@ -217,6 +233,7 @@ async fn list_docs(ctx: UserContext, conn: MainDbConn
             query = query.filter(docs::owner.eq(ctx.user_id));
         } else {
             query = query.filter(docs::owner.eq(ctx.user_id)
+             .or(docs::org_id.eq_any(ctx.org_members.iter().map(|m| m.org_id))) 
              .or(docs::id.eq_any(accesses.filter(accs::user_id.eq(ctx.user_id)).select(accs::document_id))));
         }
         let real_order=order.unwrap_or(DocumentOrder::Recent);
@@ -233,7 +250,7 @@ async fn list_docs(ctx: UserContext, conn: MainDbConn
         let real_limit=limit.unwrap_or(10);
         let real_offset=offset.unwrap_or(0);
 
-        let query = query.select((docs::id,docs::name,docs::created,docs::owner,docs::mime,docs::size));
+        let query = query.select((docs::id,docs::name,docs::created,docs::owner,docs::org_id,docs::mime,docs::size));
         
         if distinct {
             let mut query2 = query.sub_select();
@@ -294,6 +311,7 @@ async fn count_docs(ctx: UserContext, conn: MainDbConn
             query = query.filter(docs::owner.eq(ctx.user_id));
         } else {
             query = query.filter(docs::owner.eq(ctx.user_id)
+                .or(docs::org_id.eq_any(ctx.org_members.iter().map(|m| m.org_id)))
                 .or(docs::id.eq_any(accesses.filter(accs::user_id.eq(ctx.user_id)).select(accs::document_id))));
         }
 

@@ -2,7 +2,7 @@ use rocket::serde::DeserializeOwned;
 use rocket::local::blocking::{Client,LocalRequest};
 use std::env;
 
-use dataregi::{docs::DocumentUpload};
+use dataregi::{docs::DocumentUpload, base::UserContext};
 use std::fs;
 use rocket::http::{ContentType, Status, Header, Cookie};
 use uuid::Uuid;
@@ -15,7 +15,8 @@ pub fn setup() -> Client{
 }
 
 pub fn with_test_login(req: LocalRequest, user_idx: u8) -> LocalRequest {
-    req.private_cookie(Cookie::new("user", format!("{{\"user_id\":\"b9518d55-3256-4b96-81d0-65b1d7c4fb3{}\",\"site_admin\":{}}}",user_idx, user_idx==1)))
+    let ctx=UserContext::new(Uuid::parse_str(&format!("b9518d55-3256-4b96-81d0-65b1d7c4fb3{}",user_idx)).unwrap(),user_idx==1);
+    req.private_cookie(Cookie::new("user", serde_json::to_string(&ctx).unwrap()))
 }
 
 pub fn do_upload(client: &Client, path: &str) -> DocumentUpload {

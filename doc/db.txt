@@ -12,6 +12,7 @@
 	- org id (index)
 	- user id (index)
 	- timestamp
+	- org_admin bool
 - documents
 	- id
 	- name (not unique) (unique key 1)

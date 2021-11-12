@@ -31,14 +31,17 @@ pub mod base;
 use base::*;
 
 pub mod model;
-use model::User;
+use model::{User, Member};
 pub mod schema;
 use schema::limits::user_id;
 use schema::limits::dsl::limits as lts;
+use schema::members::dsl::members;
+use schema::members as mbrs;
 
 pub mod accesses;
 pub mod docs;
 pub mod limits;
+pub mod orgs;
 
 #[get("/<path..>", rank = 3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
@@ -160,10 +163,16 @@ async fn login_from_token(
                         },
                         Some(user) => {
                             conn.run(move |c| {
+
+                                let mbrs=members.filter(mbrs::user_id.eq(user.id)).load::<Member>(c)?;
+
                                 diesel::update(&user)
                                     .set(last_login.eq(Utc::now()))
                                     .execute(c)
-                                    .map(|_|UserContext::new(user.id,user.site_admin))
+                                    .map(|_| 
+                                        UserContext::new_in_org(user.id,&mbrs,user.site_admin)
+                                        
+                                    )
                             })
                             .await
                         },
@@ -268,6 +277,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
         .mount("/api/docs",docs::routes())
         .mount("/api/accesses",accesses::routes())
         .mount("/api/limits",limits::routes())
+        .mount("/api/orgs",orgs::routes())
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
         .attach(Template::fairing())

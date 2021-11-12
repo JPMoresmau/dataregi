@@ -20,6 +20,7 @@ use uuid::Uuid;
 use std::fmt;
 use std::error::Error as StdError;
 use rocket::serde::json::Json;
+use crate::model::Member;
 
 pub const COOKIE: &str = "user";
 
@@ -33,14 +34,24 @@ pub struct IndexContext<'r> {
 pub struct UserContext {
     pub user_id: Uuid,
     pub site_admin: bool,
+    pub org_members: Vec<Membership>,
 }
 
 impl UserContext {
     pub fn new(user_id: Uuid, site_admin: bool) -> Self {
-        UserContext{user_id, site_admin}
+        UserContext{user_id, site_admin,org_members:vec![]}
+    }
+
+    pub fn new_in_org(user_id: Uuid,members: &[Member], site_admin: bool) -> Self {
+        UserContext{user_id, site_admin,org_members:members.into_iter().map(|m| Membership{org_id:m.org_id,org_admin:m.org_admin}).collect()}
     }
 }
 
+#[derive(Clone,Serialize,Deserialize,Debug)]
+pub struct Membership {
+    pub org_id: Uuid,
+    pub org_admin: bool,
+}
 
 #[derive(Serialize,Debug)]
 pub struct DocumentContext<'r> {
