@@ -258,6 +258,11 @@ pub fn single_doc(ctx: UserContext,id: &str) -> Template {
     Template::render("doc", &ctx)
 }
 
+#[get("/profile")]
+pub fn profile(ctx: UserContext) -> Template {
+    Template::render("profile", &ctx)
+}
+
 pub fn rocket() -> rocket::Rocket<Build> {
     rocket::build()
         .attach(MainDbConn::fairing())
@@ -272,6 +277,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
                 login_from_token,
                 logout,
                 single_doc,
+                profile,
             ],
         )
         .mount("/api/docs",docs::routes())

@@ -1,0 +1,102 @@
+{% import "macros" as macros %}
+<!DOCTYPE html>
+<html>
+    <head>
+    <title id="title">DataRegi - Your profile</title>
+    {% include "header" %}
+    </head>
+<body>
+
+    {% include "page_header" %}
+    <div class="hero fullscreen">
+        <div class="hero-body u-center">
+            <div class="w-90" style="position: relative" id="tableRoot">
+                <div class="row">
+                    <div class="col-12">
+                        <h3>Your profile</h3>
+                    </div>
+                </div>
+                {% if site_admin %}
+                <div class="row">
+                    <div class="col-12">
+                        You are an administrator of DataRegi
+                    </div>
+                </div>
+                {% endif %}
+                <div class="row" id="docHeaderRow_org_list">
+                    <div class="col-12">
+                        <h4 id="orgCount"></h4>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                       {{ macros::pagination(label="org_list") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% include "list" %}
+    
+    <script>
+        let pagination=new Pagination('org_list','/api/orgs/count',{'member':true});
+        pagination.onCount=showOrgCount;
+        pagination.loadList=loadOrgList;
+        resetDocList(pagination,false);
+
+        function showOrgCount(pagination){
+            let txt="You are not a member of any organization";
+            if (pagination.count==1){
+                txt="You're a member of one organization";
+            } else if (pagination.count>1){
+                txt="You're a member of " +pagination.count.toString()+" organizations";
+            }
+         
+            document.getElementById('orgCount').textContent=txt;
+        }
+
+        async function loadOrgList(label, offset){
+            let pagination=paginationsByLabel[label];
+            let queryOptions=pagination['queryOptions'];
+            let queryObj=Object.assign({'limit':pagination.pageSize,'offset':offset},queryOptions);
+            let query='/api/orgs?'+Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
+    
+            const response = await fetch(query, {
+                    method: 'GET'
+                });
+            return response.json().then(data=>{
+                let docHeaderRow=document.getElementById("docHeaderRow_"+label);
+                docHeaderRow.parentNode.querySelectorAll(".docLine").forEach(el => el.remove());
+                
+                let admins={};
+                {% for member in org_members %}
+                    admins['{{ member.org_id}}']={{ member.org_admin}};
+                {% endfor %}
+
+                for (const orgInfo of data){
+                    let docLine=document.createElement("div");
+                    docLine.className="row docLine";
+                    let docItem=document.createElement("div");
+                    docItem.className="col-9";
+                    docItem.appendChild(document.createTextNode(orgInfo['name']));
+                    docLine.appendChild(docItem);
+                    let details=document.createElement("div");
+                    details.className="col-3";
+                    details.style.textAlign="right";
+                    docLine.appendChild(details);
+                    if (admins[orgInfo['id']]){
+                        details.innerText="Admin";
+                    }
+                    //tableRoot.appendChild(docLine);
+                    docHeaderRow.parentNode.insertBefore(docLine, docHeaderRow.nextSibling);
+                    docHeaderRow=docLine;
+                }
+            });
+
+        }
+
+    </script>
+
+</body>
+</html>

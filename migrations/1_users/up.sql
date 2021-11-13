@@ -8,3 +8,7 @@ CREATE TABLE users (
 );
 
 CREATE UNIQUE INDEX users_email ON users (email);
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+INSERT INTO users values (uuid_generate_v4(),'jpmoresmau@gmail.com','JP Moresmau',now(),null,true);

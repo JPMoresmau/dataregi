@@ -119,3 +119,11 @@ pub struct Member {
     pub org_admin: bool
 }
 
+#[derive(Queryable, Deserialize, Serialize, Debug, Eq, PartialEq, Clone)]
+pub struct MemberInfo {
+    pub user_id: Uuid,
+    pub email: String,
+    pub name: String,
+    pub org_admin: bool,
+}
+

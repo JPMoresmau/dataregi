@@ -2,7 +2,7 @@ use rocket::{Route};
 use crate::base::*;
 use rocket::serde::json::Json;
 use rocket::http::Status;
-use crate::model::{Member, Organization};
+use crate::model::{Member, MemberInfo, Organization, User};
 use crate::schema::members::dsl::members;
 use crate::schema::members as mbrs;
 use crate::schema::organizations::dsl::organizations;
@@ -23,43 +23,44 @@ async fn get_organization(_ctx: UserContext, org: &str, conn: MainDbConn) -> DRR
 }
 
 
-#[get("/count")]
-async fn get_organization_count(_ctx: UserContext, conn: MainDbConn) -> DRResult<Json<i64>>{
+#[get("/count?<member>")]
+async fn get_organization_count(ctx: UserContext, member: bool, conn: MainDbConn) -> DRResult<Json<i64>>{
     
     let cnt=conn.run(move |c| {
-        organizations.count().get_result(c)
+        if member {
+            organizations
+                .filter(orgs::id.eq_any(members.filter(mbrs::user_id.eq(ctx.user_id)).select(mbrs::org_id)))
+                .count().get_result(c)
+        } else {
+            organizations.count().get_result(c)
+        }
     }).await?;
     Ok(Json(cnt))
 }
 
 
-#[get("/?<limit>&<offset>")]
-async fn my_organizations(ctx: UserContext, limit: Option<usize>, offset: Option<i64>, conn: MainDbConn) -> DRResult<Json<Vec<Organization>>>{
+#[get("/?<member>&<limit>&<offset>")]
+async fn get_organizations(ctx: UserContext, member: bool, limit: Option<usize>, offset: Option<i64>, conn: MainDbConn) -> DRResult<Json<Vec<Organization>>>{
     let real_limit=limit.unwrap_or(10);
     let real_offset=offset.unwrap_or(0);
 
     let orgs=conn.run(move |c| {
-        organizations
-            .filter(orgs::id.eq_any(members.filter(mbrs::user_id.eq(ctx.user_id)).select(mbrs::org_id)))
-            .order(orgs::name)
-            .limit(real_limit as i64)
-            .offset(real_offset).load(c)
+        if member {
+            organizations
+                .filter(orgs::id.eq_any(members.filter(mbrs::user_id.eq(ctx.user_id)).select(mbrs::org_id)))
+                .order(orgs::name)
+                .limit(real_limit as i64)
+                .offset(real_offset).load(c)
+        } else {
+            organizations
+                .order(orgs::name)
+                .limit(real_limit as i64)
+                .offset(real_offset).load(c)
+        }
     }).await?;
     Ok(Json(orgs))
 }
 
-#[get("/all?<limit>&<offset>")]
-async fn get_organizations(_ctx: UserContext, limit: Option<usize>, offset: Option<i64>, conn: MainDbConn) -> DRResult<Json<Vec<Organization>>>{
-    let real_limit=limit.unwrap_or(10);
-    let real_offset=offset.unwrap_or(0);
-
-    let orgs=conn.run(move |c| {
-        organizations.order(orgs::name)
-            .limit(real_limit as i64)
-            .offset(real_offset).load(c)
-    }).await?;
-    Ok(Json(orgs))
-}
 
 #[post("/<org>")]
 async fn set_organization(ctx: UserContext, org: String, conn: MainDbConn) -> DRResult<Json<Organization>>{
@@ -102,6 +103,43 @@ fn is_admin(ctx: &UserContext, org_id: Uuid) -> bool {
     ctx.org_members.iter().any(|m| m.org_id==org_id && m.org_admin)
 }
 
+#[get("/<org>/members?<limit>&<offset>")]
+async fn get_members(ctx: UserContext, org: &str, limit: Option<usize>, offset: Option<i64>, conn: MainDbConn) -> DRResult<Json<Vec<MemberInfo>>>{
+    let org_id=Uuid::parse_str(org)?;
+    if !(ctx.site_admin || is_admin(&ctx,org_id)) {
+        return forbidden();
+    }
+    let real_limit=limit.unwrap_or(10);
+    let real_offset=offset.unwrap_or(0);
+
+    use crate::schema::users::dsl::*;
+    use crate::schema::users as usrs;
+    let mbrs=conn.run(move |c| {
+        members.filter(mbrs::org_id.eq(org_id))
+            .inner_join(users)
+            .select((mbrs::user_id,usrs::email,usrs::name,mbrs::org_admin))
+            .order(usrs::name)
+            .limit(real_limit as i64)
+            .offset(real_offset).load::<MemberInfo>(c)
+    }).await?;
+    Ok(Json(mbrs))
+}
+
+#[get("/<org>/members/count")]
+async fn get_members_count(ctx: UserContext, org: &str, conn: MainDbConn) -> DRResult<Json<i64>>{
+    let org_id=Uuid::parse_str(org)?;
+    if !(ctx.site_admin || is_admin(&ctx,org_id)) {
+        return forbidden();
+    }
+
+    let cnt=conn.run(move |c| {
+        members.filter(mbrs::org_id.eq(org_id))
+            .count().get_result(c)
+    }).await?;
+    Ok(Json(cnt))
+}
+
+
 #[get("/<org>/<user>")]
 async fn get_member(ctx: UserContext, org: &str, user: &str, conn: MainDbConn) -> DRResult<Json<Option<Member>>>{
     let org_id=Uuid::parse_str(org)?;
@@ -124,7 +162,35 @@ async fn set_member(ctx: UserContext, org: &str, user: &str, admin:bool, conn: M
         return forbidden();
     }
     
-    let user_id=Uuid::parse_str(user)?;
+    let user_id=match Uuid::parse_str(user){
+        Ok(uuid)=> uuid,
+        Err(_)=> {
+            use crate::schema::users::dsl::*;
+            use crate::schema::limits::user_id;
+            use crate::schema::limits::dsl::limits as lts;
+            let mail=String::from(user);
+            let ouser = conn
+                .run(move |c| users.filter(email.eq(mail)).first::<User>(c).optional())
+                .await?;
+            match ouser {
+                Some(user)=>user.id,
+                None=>{
+                    let user = User::new_login(user);
+                    conn.run(move |c| {
+                        let ctx = diesel::insert_into(users)
+                            .values(&user)
+                            .execute(c)
+                            .map(|_| user.id);
+                        diesel::insert_into(lts)
+                            .values(user_id.eq(user.id))
+                            .execute(c)?;
+                        ctx
+                    })
+                    .await?
+                },
+            }
+        },
+    };
 
     let mbr=conn.run(move |c| {
         let ombr: Option<Member> = members.filter(mbrs::user_id.eq(user_id).and(mbrs::org_id.eq(org_id))).first(c).optional()?;
@@ -160,5 +226,6 @@ async fn delete_member(ctx: UserContext, org: &str, user: &str,conn: MainDbConn)
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![get_organization, get_organization_count,get_organizations, get_member, set_organization,delete_organization,set_member,delete_member,my_organizations]
+    routes![get_organization, get_organization_count,get_organizations, set_organization,delete_organization
+        ,get_members,get_members_count, get_member, set_member,delete_member]
 }

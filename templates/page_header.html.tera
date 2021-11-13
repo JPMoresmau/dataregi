@@ -1,18 +1,19 @@
 <div class="header header-fixed unselectable header-animated">
     <div class="header-brand">
         <div class="nav-item no-hover">
-            <a href="/"><h6 class="title">DataRegi</h6></a>
+            <a href="/"><h6 class="title" title="DataRegi">DataRegi</h6></a>
         </div>
     </div>
     <div class="header-nav">
         <div class="nav-right">
-            {% if doc_id %}
             <div class="nav-item text-center">
-                <a href="/">Home</a>
+                <a href="/"><i class="fas fa-home fa-wrapper" title="Home"></i></a>
             </div>
-            {% endif %}
             <div class="nav-item text-center">
-                <a href="/logout">Logout</a>
+                <a href="/profile"><i class="fas fa-user fa-wrapper" title="Profile"></i></a>
+            </div>
+            <div class="nav-item text-center">
+                <a href="/logout"><i class="fas fa-sign-out-alt fa-wrapper" title="Logout"></i></a>
             </div>
         </div>
     </div>

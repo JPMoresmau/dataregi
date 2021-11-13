@@ -1,4 +1,4 @@
-use dataregi::{model::{Organization, Member, Document, DocumentInfo}};
+use dataregi::{model::{Organization, Member, MemberInfo, Document, DocumentInfo}};
 use crate::common::{setup,with_test_login,with_org_login,upload_org,delete, json_ok_response};
 use rocket::http::{ContentType, Status};
 use serial_test::serial;
@@ -8,10 +8,10 @@ use serial_test::serial;
 fn crud() {
     let client= setup();
 
-    let lt:i64=json_ok_response(with_test_login(client.get("/api/orgs/count"), 1));
+    let lt:i64=json_ok_response(with_test_login(client.get("/api/orgs/count?member=false"), 1));
     assert_eq!(0,lt);
 
-    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs/all"), 1));
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=false"), 1));
     assert_eq!(0,orgs.len());
 
     let response=with_test_login(client.post("/api/orgs/Acme"), 1).dispatch();
@@ -35,10 +35,10 @@ fn crud() {
     let response=with_test_login(client.post("/api/orgs/Acme"), 2).dispatch();
     assert_eq!(response.status(),Status::Forbidden);
 
-    let lt:i64=json_ok_response(with_test_login(client.get("/api/orgs/count"), 1));
+    let lt:i64=json_ok_response(with_test_login(client.get("/api/orgs/count?member=false"), 1));
     assert_eq!(1,lt);
 
-    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs/all"), 1));
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=false"), 1));
     assert_eq!(1,orgs.len());
     assert_eq!("Acme",&orgs[0].name);
     
@@ -48,10 +48,10 @@ fn crud() {
     let response=with_test_login(client.delete(format!("/api/orgs/{}",org.id)), 1).dispatch();
     assert_eq!(response.status(),Status::NoContent);
 
-    let lt:i64=json_ok_response(with_test_login(client.get("/api/orgs/count"), 1));
+    let lt:i64=json_ok_response(with_test_login(client.get("/api/orgs/count?member=false"), 1));
     assert_eq!(0,lt);
 
-    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs/all"), 1));
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=false"), 1));
     assert_eq!(0,orgs.len());
 }
 
@@ -110,14 +110,14 @@ fn members(){
         assert!(mbr.org_admin);
     }
 
-    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs"), 2));
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=true"), 2));
     assert_eq!(1,orgs.len());
     assert_eq!(org.id,orgs[0].id);
 
-    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs/"), 1));
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=true"), 1));
     assert_eq!(0,orgs.len());
 
-    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs/all"), 1));
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=false"), 1));
     assert_eq!(1,orgs.len());
 
     let response=with_test_login(client.delete(format!("/api/orgs/{}/b9518d55-3256-4b96-81d0-65b1d7c4fb32",&org.id)), 1).dispatch();
@@ -126,13 +126,75 @@ fn members(){
     let response=with_test_login(client.delete(format!("/api/orgs/{}/b9518d55-3256-4b96-81d0-65b1d7c4fb32",&org.id)), 2).dispatch();
     assert_eq!(response.status(),Status::Forbidden);
 
-    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs/"), 2));
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=true"), 2));
     assert_eq!(0,orgs.len());
 
     let response=with_test_login(client.delete(format!("/api/orgs/{}",org.id)), 1).dispatch();
     assert_eq!(response.status(),Status::NoContent);
 }
 
+#[test]
+#[serial]
+fn members_email(){
+    let client= setup();
+
+    let response=with_test_login(client.post("/api/orgs/Acme"), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+    let org:Organization = response.into_json().unwrap(); 
+    assert_eq!("Acme",&org.name);
+
+    let ombr:Option<Member>=json_ok_response(with_test_login(client.get(format!("/api/orgs/{}/b9518d55-3256-4b96-81d0-65b1d7c4fb32",&org.id)), 1));
+    assert_eq!(None,ombr);
+
+    let response=with_test_login(client.put(format!("/api/orgs/{}/test2@dataregi.com",&org.id)), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+    let mbr:Member = response.into_json().unwrap(); 
+    assert_eq!(org.id,mbr.org_id);
+    assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb32",&mbr.user_id.to_string());
+    assert!(!mbr.org_admin);
+
+   
+    let ombr:Option<Member>=json_ok_response(with_test_login(client.get(format!("/api/orgs/{}/b9518d55-3256-4b96-81d0-65b1d7c4fb32",&org.id)), 1));
+    assert!(ombr.is_some());
+    if let Some(mbr)=ombr {
+        assert_eq!(org.id,mbr.org_id);
+        assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb32",&mbr.user_id.to_string());
+        assert!(!mbr.org_admin);
+    }
+
+    
+    let response=with_test_login(client.delete(format!("/api/orgs/{}/b9518d55-3256-4b96-81d0-65b1d7c4fb32",&org.id)), 1).dispatch();
+    assert_eq!(response.status(),Status::NoContent);
+    
+    let response=with_test_login(client.put(format!("/api/orgs/{}/test5@dataregi.com",&org.id)), 1).dispatch();
+    assert_eq!(response.status(),Status::Ok);
+    assert_eq!(response.content_type(), Some(ContentType::JSON));
+
+    let mbr:Member = response.into_json().unwrap(); 
+    assert_eq!(org.id,mbr.org_id);
+    assert!(!mbr.org_admin);
+    
+    let ombr:Option<Member>=json_ok_response(with_test_login(client.get(format!("/api/orgs/{}/{}",&org.id,mbr.user_id)), 1));
+    assert!(ombr.is_some());
+    if let Some(mbr2)=ombr {
+        assert_eq!(org.id,mbr2.org_id);
+        assert_eq!(mbr.user_id,mbr.user_id);
+        assert!(!mbr2.org_admin);
+    }
+
+    let response=with_test_login(client.delete(format!("/api/orgs/{}/{}",&org.id,mbr.user_id)), 1).dispatch();
+    assert_eq!(response.status(),Status::NoContent);
+
+    let orgs:Vec<Organization>=json_ok_response(with_test_login(client.get("/api/orgs?member=true"), 2));
+    assert_eq!(0,orgs.len());
+
+    let response=with_test_login(client.delete(format!("/api/orgs/{}",org.id)), 1).dispatch();
+    assert_eq!(response.status(),Status::NoContent);
+}
 
 
 #[test]
@@ -188,6 +250,18 @@ fn members_org_admin(){
         assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb33",&mbr2.user_id.to_string());
         assert!(mbr2.org_admin);
     }
+
+    let cnt:i64=json_ok_response(with_org_login(client.get(format!("/api/orgs/{}/members/count",&org.id)), 2, &v));
+    assert_eq!(2,cnt);
+
+    let mbrs:Vec<MemberInfo> = json_ok_response(with_org_login(client.get(format!("/api/orgs/{}/members",&org.id)), 2, &v));
+    assert_eq!(2,mbrs.len());
+    assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb32",&mbrs[0].user_id.to_string());
+    assert_eq!("b9518d55-3256-4b96-81d0-65b1d7c4fb33",&mbrs[1].user_id.to_string());
+    assert_eq!("Test User 2",&mbrs[0].name);
+    assert_eq!("Test User 3",&mbrs[1].name);
+    assert_eq!("test2@dataregi.com",&mbrs[0].email);
+    assert_eq!("test3@dataregi.com",&mbrs[1].email);
 
     let response=with_org_login(client.delete(format!("/api/orgs/{}/b9518d55-3256-4b96-81d0-65b1d7c4fb33",&org.id)), 2, &v).dispatch();
     assert_eq!(response.status(),Status::NoContent);
