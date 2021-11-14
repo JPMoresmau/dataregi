@@ -258,6 +258,12 @@ pub fn single_doc(ctx: UserContext,id: &str) -> Template {
     Template::render("doc", &ctx)
 }
 
+#[get("/org?<id>")]
+pub fn single_org(ctx: UserContext,id: &str) -> Template {
+    let ctx = OrganizationContext { user_id: &ctx.user_id, org_id: id };
+    Template::render("org", &ctx)
+}
+
 #[get("/profile")]
 pub fn profile(ctx: UserContext) -> Template {
     Template::render("profile", &ctx)
@@ -278,6 +284,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
                 logout,
                 single_doc,
                 profile,
+                single_org,
             ],
         )
         .mount("/api/docs",docs::routes())

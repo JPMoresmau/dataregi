@@ -85,9 +85,20 @@ async fn upload_doc(ctx: UserContext,org:Option<&str>,mut upload: Form<Upload<'_
             if let Some(doc)=docs.pop() {
                 uuids.push(DocumentUpload::AlreadyExists{upload_name:short_name, existing_id:doc});
             } else {
-                let lt=conn.run(move |c| {
-                    limits.filter(lts::user_id.eq(&uid)).first::<Limit>(c)
+                let olt=conn.run(move |c| {
+                    limits.filter(lts::user_id.eq(&uid)).first::<Limit>(c).optional()
                 }).await?;
+                let lt = match olt {
+                    Some(lt)=>lt,
+                    None=> {
+                        conn.run(move |c| {
+                            diesel::insert_into(limits)
+                                .values(lts::user_id.eq(&uid))
+                                .execute(c)?;
+                            limits.filter(lts::user_id.eq(&uid)).first::<Limit>(c)
+                        }).await?
+                    },
+                };
                 let lt_updated=LimitUpdate{current_documents:lt.current_documents+1,current_size:lt.current_size+data.len() as i64};
                 if lt_updated.current_documents>lt.max_documents || lt_updated.current_size>lt.max_size {
                     uuids.push(DocumentUpload::LimitsReached);

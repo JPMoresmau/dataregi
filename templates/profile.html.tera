@@ -70,9 +70,11 @@
                 docHeaderRow.parentNode.querySelectorAll(".docLine").forEach(el => el.remove());
                 
                 let admins={};
-                {% for member in org_members %}
-                    admins['{{ member.org_id}}']={{ member.org_admin}};
-                {% endfor %}
+                //{% for member in org_members %}
+                // {% if member.org_admin %}
+                    admins['{{ member.org_id}}']=true;
+                // {% endif %}
+                //{% endfor %}
 
                 for (const orgInfo of data){
                     let docLine=document.createElement("div");
@@ -86,7 +88,10 @@
                     details.style.textAlign="right";
                     docLine.appendChild(details);
                     if (admins[orgInfo['id']]){
-                        details.innerText="Admin";
+                        let a=document.createElement("a");
+                        a.href="/org?id="+orgInfo['id'];
+                        details.appendChild(a);
+                        a.innerText="Admin";
                     }
                     //tableRoot.appendChild(docLine);
                     docHeaderRow.parentNode.insertBefore(docLine, docHeaderRow.nextSibling);

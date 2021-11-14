@@ -59,6 +59,12 @@ pub struct DocumentContext<'r> {
     pub doc_id: &'r str,
 }
 
+#[derive(Serialize,Debug)]
+pub struct OrganizationContext<'r> {
+    pub user_id: &'r Uuid,
+    pub org_id: &'r str,
+}
+
 
 #[derive(Deserialize)]
 pub struct LoginEmail<'r> {

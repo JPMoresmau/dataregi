@@ -1,0 +1,17 @@
+<script>
+    function showError(err){
+        let errorCell=document.getElementById('errorCell');
+        if (errorCell==null){
+            const errorRow=document.createElement('div');
+            errorRow.className='row';
+            errorCell=document.createElement('div');
+            errorCell.id='errorCell';
+            errorCell.className='col-6 offset-3 text-danger';
+            errorRow.appendChild(errorCell);
+            const root=document.getElementById('tableRoot');
+            root.insertBefore(errorCell,root.firstChild);
+        }
+        errorCell.innerText=err;
+    }
+
+</script>

@@ -1,0 +1,224 @@
+{% import "macros" as macros %}
+<!DOCTYPE html>
+<html>
+    <head>
+    <title id="title">DataRegi</title>
+    {% include "header" %}
+    </head>
+<body>
+
+    {% include "page_header" %}
+    <div class="hero fullscreen">
+        <div class="hero-body u-center">
+            <div class="w-90" style="position: relative" id="tableRoot">
+                <div class="row">
+                    <div class="col-12">
+                        <h3 id="header"></h3>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-9">
+                        <h4 id="memberCount"></h4>
+                    </div>
+                    <div class="col-3">
+                        <span style="text-align: end;">
+                            <a href="javascript:showSharing()"><i id="sharing_button" class="fas fa-wrapper fa-plus" title="Add a member in this organization"></i></a>
+                        </span>
+                    </div>
+                </div>
+                <div class="row" id="docHeaderRow_member_list">
+                    <div class="col-6" style="display:none">
+                       <input id="add_sharing" type="text" placeholder="Add an email address to add as a member">
+                    </div>
+                    <div class="col-3" style="display:none">
+                        <input id="add_sharing_admin" type="checkbox" placeholder="Organization admin?"><label for="add_sharing_admin">Organization admin?</label>
+                     </div>
+                    <div class="col-3" style="display:none">
+                       <button class="form-group-btn btn-link" onclick="addSharing()">Add</button>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                       {{ macros::pagination(label="member_list") }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-animated--zoom-in" id="unshare-modal">
+        <a href="#org_unshare" class="modal-overlay close-btn" aria-label="Close"></a>
+        <div class="modal-content" role="document">
+            <div class="modal-header">
+                <a href="#org_unshare" class="u-pull-right" aria-label="Close">
+                    <span class="icon">
+                        <i class="fa-wrapper fa fa-times"></i>
+                    </span>
+                </a>
+                <div class="modal-title">Confirm membership deletion</div>
+            </div>
+            <div class="modal-body">
+                <div id="unshare_modal_text">
+                    
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="form-section u-text-right">
+                    <a href="#org_unshare">
+                        <button class="btn btn-small u-inline-block">Cancel</button>
+                    </a>
+                    <a href="#org_unshare">
+                        <button class="btn-info btn-small u-inline-block" id="unshare_confirm" >Confirm</button>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% include "list" %}
+    {% include "script" %}
+    <script>
+        const org_id='{{ org_id }}';
+        async function loadOrg(id){
+            if (id){
+                const query="/api/orgs/"+encodeURIComponent(id);
+                const response = await fetch(query, {
+                    method: 'GET'
+                })
+                if (!response.ok){
+                    showError(await response.text());
+                } else {
+                    const orgInfo=await response.json();
+                    const orgName=orgInfo['name'];
+                    document.getElementById('title').innerText="DataRegi - "+orgName;
+                    document.getElementById('header').innerText=orgName;
+
+                   
+                    showMembers();
+
+                }
+            }
+        }
+
+
+       
+        function showMemberCount(pagination){
+            let txt="This organization has no member";
+            if (pagination.count==1){
+                txt="This organization has one member";
+            } else if (pagination.count>1){
+                txt="This organization has " +pagination.count.toString()+" members";
+            }
+         
+            document.getElementById('memberCount').textContent=txt;
+        }
+
+        async function loadMemberList(label, offset){
+            let pagination=paginationsByLabel[label];
+            let queryOptions=pagination['queryOptions'];
+            let queryObj=Object.assign({'limit':pagination.pageSize,'offset':offset},queryOptions);
+            let uuid=queryObj['id'];
+            delete queryObj['id'];
+            let query='/api/orgs/'+encodeURIComponent(uuid)+'/members?'+Object.keys(queryObj).map(key => key + '=' + encodeURIComponent(queryObj[key])).join('&');
+    
+            const response = await fetch(query, {
+                    method: 'GET'
+                });
+            return response.json().then(data=>{
+                let docHeaderRow=document.getElementById("docHeaderRow_"+label);
+                docHeaderRow.parentNode.querySelectorAll(".docLine").forEach(el => el.remove());
+
+                for (const memberInfo of data){
+                    let docLine=document.createElement("div");
+                    docLine.className="row docLine";
+                    let docItem=document.createElement("div");
+                    docItem.className="col-6";
+                    let txt=memberInfo['name'];
+                    if (memberInfo['org_admin']){
+                        txt+=" (Admin)";
+                    }
+                    docItem.appendChild(document.createTextNode(txt));
+                    docLine.appendChild(docItem);
+                    docItem=document.createElement("div");
+                    docItem.className="col-3";
+                    docItem.appendChild(document.createTextNode(memberInfo['email']));
+                    docLine.appendChild(docItem);
+                    let details=document.createElement("div");
+                    details.className="col-3";
+                    details.style.textAlign="right";
+                    docLine.appendChild(details);
+                    const del = document.createElement("a");
+                    del.href="#unshare-modal";
+                    const deli=document.createElement("i");
+                    deli.className="fas fa-trash fa-wrapper";
+                    deli.title="Remove membership from "+memberInfo['name'];
+                    del.appendChild(deli);
+                    details.appendChild(del);
+                    document.getElementById("unshare_confirm").onclick=function(){removeSharing(memberInfo['user_id']);};
+                    document.getElementById("unshare_modal_text").innerText="Are you sure you want to remove membership "+memberInfo['name']+"?";
+                    docHeaderRow.parentNode.insertBefore(docLine, docHeaderRow.nextSibling);
+                    docHeaderRow=docLine;
+                }
+            });
+
+        }
+
+        function showMembers(){
+            let pagination=new Pagination('member_list','/api/orgs/'+encodeURIComponent(org_id)+'/members/count',{'id':org_id});
+            pagination.onCount=showMemberCount;
+            pagination.loadList=loadMemberList;
+            resetDocList(pagination,false);
+        }
+
+        async function addSharing(){
+            const email=document.getElementById('add_sharing').value;
+            if (email){
+                const admin=document.getElementById('add_sharing_admin').checked;
+                const query="/api/orgs/"+encodeURIComponent(org_id)+"/"+encodeURIComponent(email)+"?admin="+encodeURIComponent(admin);
+                const response = await fetch(query, {
+                    method: 'PUT'
+                })
+                if (!response.ok){
+                    showError(await response.text());
+                } else {
+                    showMembers();
+                }
+            }
+        }
+
+        async function removeSharing(user_id){
+            const query="/api/orgs/"+encodeURIComponent(org_id)+"/"+encodeURIComponent(user_id);
+            const response = await fetch(query, {
+                method: 'DELETE'
+            })
+            if (!response.ok){
+                showError(await response.text());
+            } else {
+                showMembers();
+            }
+        }
+
+        function showSharing(){
+            for (div of document.getElementById('docHeaderRow_member_list').getElementsByTagName("div")){
+                div.style.display='flex';
+            }
+            const sharingButton=document.getElementById("sharing_button");
+            sharingButton.className="fas fa-wrapper fa-minus";
+            sharingButton.parentElement.href="javascript:hideSharing()";
+        }
+
+        function hideSharing(){
+            for (div of document.getElementById('docHeaderRow_member_list').getElementsByTagName("div")){
+                div.style.display='none';
+            }
+            const sharingButton=document.getElementById("sharing_button");
+            sharingButton.className="fas fa-wrapper fa-plus";
+            sharingButton.parentElement.href="javascript:showSharing()";
+        }
+
+        loadOrg(org_id);
+
+    </script>
+
+</body>
+</html>
