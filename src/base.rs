@@ -28,6 +28,7 @@ pub const COOKIE: &str = "user";
 pub struct IndexContext<'r> {
     pub error: &'r str,
     pub message: &'r str,
+    pub callback_name: &'r str,
 }
 
 #[derive(Clone,Serialize,Deserialize,Debug)]
@@ -322,4 +323,30 @@ impl<T> SelectSubSelect for T {
     }
 }
 
-
+pub async fn ensure_user_exists(user_email: &str, conn: &MainDbConn) -> DRResult<Uuid> {
+    use crate::model::User;
+    use crate::schema::users::dsl::*;
+    use crate::schema::limits::user_id;
+    use crate::schema::limits::dsl::limits as lts;
+    let mail=String::from(user_email);
+    let ouser = conn
+        .run(move |c| users.filter(email.eq(mail)).first::<User>(c).optional())
+        .await?;
+    match ouser {
+        Some(user)=>Ok(user.id),
+        None=>{
+            let user = User::new_reference(user_email);
+            let new_id = conn.run(move |c| {
+                let ctx = diesel::insert_into(users)
+                    .values(&user)
+                    .execute(c)
+                    .map(|_| user.id);
+                diesel::insert_into(lts)
+                    .values(user_id.eq(user.id))
+                    .execute(c)?;
+                ctx
+            }).await?;
+            Ok(new_id)
+        },
+    }
+}

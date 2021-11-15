@@ -1,6 +1,7 @@
 use crate::common::{setup,with_test_login};
 use rocket::http::{ContentType, Status};
 
+
 #[test]
 fn index_logged_out_returns_ok(){
     let client = setup();

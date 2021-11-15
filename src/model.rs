@@ -15,11 +15,13 @@ pub struct User {
 }
 
 impl User {
-    pub fn new_login<S: Into<String>>(email: S) -> Self {
-        let n=email.into();
+    pub fn new_login<S1: Into<String>,S2: Into<String>>(email: S1, name: Option<S2>) -> Self {
+        let es=email.into();
+        let n=name.map(|s| s.into()).unwrap_or_else(|| es.clone());
+        
         User {
             id:Uuid::new_v4(),
-            email:n.clone(),
+            email:es,
             name:n,
             created: Utc::now(),
             last_login: Some(Utc::now()),

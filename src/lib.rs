@@ -6,12 +6,14 @@ extern crate diesel_migrations;
 extern crate diesel;
 
 use rocket::fairing::AdHoc;
+use rocket::form::Form;
 use rocket::fs::{relative, NamedFile};
 use rocket::http::Status;
 use rocket::http::{Cookie, CookieJar, SameSite};
 use rocket::outcome::IntoOutcome;
 use rocket::request::{self, FromRequest, Request,FlashMessage};
 use rocket::response::{status, status::NotFound, Flash, Redirect};
+use rocket::serde::{Deserialize, Serialize};
 use rocket::serde::json::Json;
 use rocket::State;
 use rocket::{Build, Rocket};
@@ -26,6 +28,8 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use chrono::Utc;
 use diesel::prelude::*;
+
+use jsonwebtoken_google::Parser;
 
 pub mod base;
 use base::*;
@@ -51,9 +55,25 @@ async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
         .map_err(|e| NotFound(e.to_string()))
 }
 
+fn callback_address(config: &State<Config>) -> String {
+     if config.port == 443 {
+        format!(
+            "{}.dataregi.com",
+            config.callback_name
+        )
+    } else {
+        format!(
+            "{}.dataregi.com:{}",
+            config.callback_name, config.port
+        )
+    }
+}
+
 #[get("/", rank = 2)]
-pub fn index(flash: Option<FlashMessage>) -> Template {
-    let ctx = IndexContext { error: "", message: &flash.map(|f| f.message().to_string()).unwrap_or_else(String::new) };
+pub fn index(flash: Option<FlashMessage>,config: &State<Config>) -> Template {
+    let ctx = IndexContext { error: "", 
+        callback_name: &callback_address(config),
+        message: &flash.map(|f| f.message().to_string()).unwrap_or_else(String::new) };
     Template::render("index", &ctx)
 }
 
@@ -133,77 +153,82 @@ async fn login_from_token(
 ) -> Result<Redirect,Template> {
     let maybe_reg = tokens.tokens.lock().unwrap().remove(token);
 
-    let mut error = String::new();
-    if let Some(reg) = maybe_reg {
-        if reg.timestamp.elapsed().as_secs() > config.token_lifespan_minutes * 60 {
-            error = String::from("Could not log in, expired token");
+    let error= 
+        if let Some(reg) = maybe_reg {
+            if reg.timestamp.elapsed().as_secs() > config.token_lifespan_minutes * 60 {
+                Some(String::from("Could not log in, expired token"))
+            } else {
+                do_login(&reg.address, None, cookies, &conn).await
+            }
         } else {
-            use schema::users::dsl::*;
-            let addr = reg.address.clone();
-            let rouser = conn
-                .run(move |c| users.filter(email.eq(addr)).first::<User>(c).optional())
-                .await;
+            Some(String::from("Could not log in, invalid token"))
+        };
+    if let Some(err) = error {
+        let ctx = IndexContext { error: &err, message: "",callback_name: &callback_address(config), };
+        Err(Template::render("index", &ctx))
+    } else {
+       Ok(Redirect::to("/"))
+    } 
+}
 
-            match rouser {
-                Ok(ouser) => {
-                    let rctx = match ouser {
-                        None => {
-                            let user = User::new_login(reg.address);
-                            conn.run(move |c| {
-                                let ctx = diesel::insert_into(users)
-                                    .values(&user)
-                                    .execute(c)
-                                    .map(|_| UserContext::new(user.id,false));
-                                diesel::insert_into(lts)
-                                    .values(user_id.eq(user.id))
-                                    .execute(c)?;
-                                ctx
-                            })
-                            .await
-                        },
-                        Some(user) => {
-                            conn.run(move |c| {
+async fn do_login(user_email: &str, user_name: Option<&str>,  cookies: &CookieJar<'_>, conn: &MainDbConn ) -> Option<String> {
+    use schema::users::dsl::*;
+    let addr = String::from(user_email);
+    let rouser = conn
+        .run(move |c| users.filter(email.eq(addr)).first::<User>(c).optional())
+        .await;
 
-                                let mbrs=members.filter(mbrs::user_id.eq(user.id)).load::<Member>(c)?;
+    match rouser {
+        Ok(ouser) => {
+            let rctx = match ouser {
+                None => {
+                    let user = User::new_login(user_email,user_name);
+                    conn.run(move |c| {
+                        let ctx = diesel::insert_into(users)
+                            .values(&user)
+                            .execute(c)
+                            .map(|_| UserContext::new(user.id,false));
+                        diesel::insert_into(lts)
+                            .values(user_id.eq(user.id))
+                            .execute(c)?;
+                        ctx
+                    })
+                    .await
+                },
+                Some(user) => {
+                    conn.run(move |c| {
 
-                                diesel::update(&user)
-                                    .set(last_login.eq(Utc::now()))
-                                    .execute(c)
-                                    .map(|_| 
-                                        UserContext::new_in_org(user.id,&mbrs,user.site_admin)
-                                        
-                                    )
-                            })
-                            .await
-                        },
-                    };
-                    match rctx {
-                        Ok(ctx) => {
-                            let c = Cookie::build(COOKIE, serde_json::to_string(&ctx).unwrap())
-                                .secure(true)
-                                .same_site(SameSite::Lax) // so it works from email links
-                                .finish();
-                            cookies.add_private(c);
-                        }
-                        Err(e) => {
-                            error = e.to_string();
-                        }
-                    }
+                        let mbrs=members.filter(mbrs::user_id.eq(user.id)).load::<Member>(c)?;
+
+                        diesel::update(&user)
+                            .set(last_login.eq(Utc::now()))
+                            .execute(c)
+                            .map(|_| 
+                                UserContext::new_in_org(user.id,&mbrs,user.site_admin)
+                                
+                            )
+                    })
+                    .await
+                },
+            };
+            match rctx {
+                Ok(ctx) => {
+                    let c = Cookie::build(COOKIE, serde_json::to_string(&ctx).unwrap())
+                        .secure(true)
+                        .same_site(SameSite::Lax) // so it works from email links
+                        .finish();
+                    cookies.add_private(c);
                 }
                 Err(e) => {
-                    error = e.to_string();
+                    return Some(e.to_string());
                 }
             }
-        }
-    } else {
-        error = String::from("Could not log in, invalid token");
+        },
+        Err(e) => {
+            return Some(e.to_string());
+        },
     }
-    let ctx = IndexContext { error: &error, message: "" };
-    if error.is_empty() {
-       Ok(Redirect::to("/"))
-    } else {
-       Err(Template::render("index", &ctx))
-    }
+    None
 }
 
 #[get("/logout")]
@@ -269,6 +294,55 @@ pub fn profile(ctx: UserContext) -> Template {
     Template::render("profile", &ctx)
 }
 
+#[derive(FromForm,Debug)]
+struct GoogleData<'a> {
+    g_csrf_token: &'a str,
+    credential: &'a str,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub aud: String,         // Optional. Audience
+    pub exp: usize,          // Required (validate_exp defaults to true in validation). Expiration time (as UTC timestamp)
+    pub iat: usize,          // Optional. Issued at (as UTC timestamp)
+    pub iss: String,         // Optional. Issuer
+    pub nbf: usize,          // Optional. Not Before (as UTC timestamp)
+    pub sub: String,         // Optional. Subject (whom token refers to)
+    pub email: String,
+    pub name: String,
+}
+
+#[post("/google_redirect", data = "<google>")]
+async fn google_redirect(google: Form<GoogleData<'_>>, cookies: &CookieJar<'_>, config: &State<Config>,conn: MainDbConn,) -> Result<Redirect,Template> {
+    
+    let mstr=cookies.get("g_csrf_token").map(|c| c.value());
+    //println!("cookie: {:?}",mstr);
+    //println!("data: {:?}",google);
+    
+    let error=
+        if mstr==Some(google.g_csrf_token){
+            let parser = Parser::new("388424249291-9nu7ati713lrngalv6abai5l5clsatvg.apps.googleusercontent.com");
+            let rclaims = parser.parse::<Claims>(&google.credential).await;
+            match rclaims {
+                Ok(claims)=>{
+                    do_login(&claims.email,Some(&claims.name), cookies, &conn).await
+                },
+                Err(e)=>{
+                    Some(e.to_string())
+                },
+            }
+        } else {
+            Some(String::from("Error matching token and form"))
+        };
+    if let Some(err) = error {
+        let ctx = IndexContext { error: &err, message: "",callback_name: &callback_address(config), };
+        Err(Template::render("index", &ctx))
+    } else {
+       Ok(Redirect::to("/"))
+    } 
+   
+}
+
 pub fn rocket() -> rocket::Rocket<Build> {
     rocket::build()
         .attach(MainDbConn::fairing())
@@ -285,6 +359,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
                 single_doc,
                 profile,
                 single_org,
+                google_redirect,
             ],
         )
         .mount("/api/docs",docs::routes())

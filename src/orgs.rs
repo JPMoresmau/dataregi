@@ -2,7 +2,7 @@ use rocket::{Route};
 use crate::base::*;
 use rocket::serde::json::Json;
 use rocket::http::Status;
-use crate::model::{Member, MemberInfo, Organization, User};
+use crate::model::{Member, MemberInfo, Organization};
 use crate::schema::members::dsl::members;
 use crate::schema::members as mbrs;
 use crate::schema::organizations::dsl::organizations;
@@ -164,32 +164,7 @@ async fn set_member(ctx: UserContext, org: &str, user: &str, admin:bool, conn: M
     
     let user_id=match Uuid::parse_str(user){
         Ok(uuid)=> uuid,
-        Err(_)=> {
-            use crate::schema::users::dsl::*;
-            use crate::schema::limits::user_id;
-            use crate::schema::limits::dsl::limits as lts;
-            let mail=String::from(user);
-            let ouser = conn
-                .run(move |c| users.filter(email.eq(mail)).first::<User>(c).optional())
-                .await?;
-            match ouser {
-                Some(user)=>user.id,
-                None=>{
-                    let user = User::new_login(user);
-                    conn.run(move |c| {
-                        let ctx = diesel::insert_into(users)
-                            .values(&user)
-                            .execute(c)
-                            .map(|_| user.id);
-                        diesel::insert_into(lts)
-                            .values(user_id.eq(user.id))
-                            .execute(c)?;
-                        ctx
-                    })
-                    .await?
-                },
-            }
-        },
+        Err(_)=> ensure_user_exists(user,&conn).await?,
     };
 
     let mbr=conn.run(move |c| {

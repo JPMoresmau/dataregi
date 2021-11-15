@@ -13,7 +13,7 @@
                 <a href="/profile"><i class="fas fa-user fa-wrapper" title="Profile"></i></a>
             </div>
             <div class="nav-item text-center">
-                <a href="/logout"><i class="fas fa-sign-out-alt fa-wrapper" title="Logout"></i></a>
+                <a href="/logout"><i class="fas fa-sign-out-alt fa-wrapper g_id_signout" title="Logout"></i></a>
             </div>
         </div>
     </div>

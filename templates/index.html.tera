@@ -3,6 +3,7 @@
     <head>
     <title>DataRegi</title>
     {% include "header" %}
+
     </head>
 <body>
 
@@ -44,7 +45,23 @@
                             Login
                         </button>
                     </div>
+                    <div class="col-3">
+                        <div id="g_id_onload"
+                                data-client_id="388424249291-9nu7ati713lrngalv6abai5l5clsatvg.apps.googleusercontent.com"
+                                data-login_uri="https://{{callback_name}}/google_redirect"
+                             >
+                            </div>
+                            <div class="g_id_signin"
+                                data-type="standard"
+                                data-size="large"
+                                data-theme="outline"
+                                data-text="sign_in_with"
+                                data-shape="rectangular"
+                                data-logo_alignment="left">
+                            </div>
+                    </div>
                 </div>
+
                 <div class="row">
                     <div class="col-6 offset-3">{% include "toast" %}</div>
                 </div>
