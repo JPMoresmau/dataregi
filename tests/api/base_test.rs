@@ -26,3 +26,21 @@ fn index_logged_in_returns_ok(){
     assert!(cnt.contains("<input type=\"file\" id=\"uploadInput\""));
     assert!(!cnt.contains("<input id=\"email\" type=\"text\""));
 }
+
+#[test]
+fn api_unauthorized(){
+    let client = setup();
+    let req = client.get("/api/orgs");
+    let response = req.dispatch();
+    assert_eq!(response.status(),Status::Unauthorized);
+}
+
+
+#[test]
+fn site_unauthorized(){
+    let client = setup();
+    let req = client.get("/profile");
+    let response = req.dispatch();
+    assert_eq!(response.status(),Status::SeeOther);
+    
+}

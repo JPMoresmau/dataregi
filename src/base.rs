@@ -159,6 +159,7 @@ pub enum DRError {
     UuidError,
     NotFoundError,
     ForbiddenError,
+    UnauthorizedError,
 }
 
 impl fmt::Display for StructuredError {

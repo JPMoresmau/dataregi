@@ -11,7 +11,7 @@ use rocket::fs::{relative, NamedFile};
 use rocket::http::Status;
 use rocket::http::{Cookie, CookieJar, SameSite};
 use rocket::outcome::IntoOutcome;
-use rocket::request::{self, FromRequest, Request,FlashMessage};
+use rocket::request::{FromRequest, Request,FlashMessage, Outcome};
 use rocket::response::{status, status::NotFound, Flash, Redirect};
 use rocket::serde::{Deserialize, Serialize};
 use rocket::serde::json::Json;
@@ -47,12 +47,18 @@ pub mod docs;
 pub mod limits;
 pub mod orgs;
 
-#[get("/<path..>", rank = 3)]
+#[get("/static/<path..>", rank = 3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
     let path = Path::new(relative!("site")).join(path);
     NamedFile::open(path)
         .await
         .map_err(|e| NotFound(e.to_string()))
+}
+
+#[get("/favicon.ico")]
+async fn favicon() -> Result<NamedFile, NotFound<String>> {
+    static_files(PathBuf::from("favicon.ico")).await
+
 }
 
 fn callback_address(config: &State<Config>) -> String {
@@ -79,15 +85,21 @@ pub fn index(flash: Option<FlashMessage>,config: &State<Config>) -> Template {
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for UserContext {
-    type Error = std::convert::Infallible;
+    type Error = DRError;
 
-    async fn from_request(request: &'r Request<'_>) -> request::Outcome<UserContext, Self::Error> {
-        request
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let ouc=request
             .cookies()
             .get_private(COOKIE)
             .map(|s| serde_json::from_str(s.value()).ok())
-            .flatten()
-            .or_forward(())
+            .flatten();
+
+        if request.uri()=="/"{
+            ouc.or_forward(())
+        } else {
+            ouc.into_outcome((Status::Unauthorized,DRError::UnauthorizedError))
+        }
+            //.or_forward(())
     }
 }
 
@@ -343,6 +355,17 @@ async fn google_redirect(google: Form<GoogleData<'_>>, cookies: &CookieJar<'_>, 
    
 }
 
+#[catch(401)]
+pub fn no_auth() -> Redirect {
+    Redirect::to("/")
+}
+
+#[catch(401)]
+pub fn no_auth_api() -> status::Unauthorized<()> {
+    status::Unauthorized(None)
+}
+
+
 pub fn rocket() -> rocket::Rocket<Build> {
     rocket::build()
         .attach(MainDbConn::fairing())
@@ -353,6 +376,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
                 index_user,
                 index,
                 static_files,
+                favicon,
                 send_login_email,
                 login_from_token,
                 logout,
@@ -366,6 +390,8 @@ pub fn rocket() -> rocket::Rocket<Build> {
         .mount("/api/accesses",accesses::routes())
         .mount("/api/limits",limits::routes())
         .mount("/api/orgs",orgs::routes())
+        .register("/",catchers!(no_auth))
+        .register("/api",catchers!(no_auth_api))
         .attach(AdHoc::config::<Config>())
         .manage(EmailTokens::default())
         .attach(Template::fairing())
