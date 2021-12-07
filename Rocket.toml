@@ -3,6 +3,9 @@ template_dir = "templates"
 token_lifespan_minutes = 10
 secret_key = "Y7JlcWBdCOhknIxnMkFlhtU7+tPF/V1x4X6vAzFqtCs="
 
+[limits]
+file= "10Mib"
+
 [debug]
 callback_name = "local"
 

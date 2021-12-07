@@ -14,22 +14,30 @@ use rocket::outcome::IntoOutcome;
 use rocket::request::{FromRequest, Request,FlashMessage, Outcome};
 use rocket::response::{status, status::NotFound, Flash, Redirect};
 use rocket::serde::{Deserialize, Serialize};
-use rocket::serde::json::Json;
-use rocket::State;
+use rocket::serde::json::{Value, Json};
+use rocket::{State};
 use rocket::{Build, Rocket};
+use rocket::tokio::{time,io::AsyncReadExt};
 use rocket_dyn_templates::Template;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use lettre::Message;
 use rusoto_core::Region;
 use rusoto_ses::{RawMessage, SendRawEmailRequest, Ses, SesClient};
-use std::env;
+use rusoto_sqs::{Message as SqsMessage, Sqs, SqsClient, ReceiveMessageRequest, DeleteMessageRequest};
+use rusoto_s3::{S3,S3Client,GetObjectRequest, DeleteObjectRequest};
+use std::{env};
 
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use chrono::Utc;
 use diesel::prelude::*;
+use futures::future::join_all;
 
 use jsonwebtoken_google::Parser;
+// use email_parser::{email::Email,mime::Entity};
+use mailparse::*;
+use uuid::Uuid;
 
 pub mod base;
 use base::*;
@@ -43,9 +51,14 @@ use schema::members::dsl::members;
 use schema::members as mbrs;
 
 pub mod accesses;
+use crate::accesses::add_access_system;
 pub mod docs;
+use crate::docs::upload_data;
 pub mod limits;
 pub mod orgs;
+
+const SQS_QUEUE: &str ="https://sqs.eu-west-1.amazonaws.com/334979221948/dataregi-emails-queue";
+
 
 #[get("/static/<path..>", rank = 3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
@@ -114,7 +127,7 @@ async fn send_login_email(
     config: &State<Config>,
     tokens: &State<EmailTokens>,
 ) -> Result<status::Accepted<Json<String>>, status::Custom<String>> {
-    let client = SesClient::new(Region::EuWest3);
+    let client = SesClient::new(Region::EuWest1);
 
     let token: String = thread_rng()
         .sample_iter(&Alphanumeric)
@@ -366,10 +379,197 @@ pub fn no_auth_api() -> status::Unauthorized<()> {
 }
 
 
+async fn sqs_polling<'a>(conn: &'a MainDbConn){
+    let sqs = SqsClient::new(Region::EuWest1);
+    let s3 = S3Client::new(Region::EuWest1);
+    let mut go_on=true;
+    while go_on {
+        go_on = false;
+        let rm = ReceiveMessageRequest{
+            max_number_of_messages: Some(10),
+            queue_url: String::from(SQS_QUEUE),
+            ..Default::default()
+        };
+        let rrmr=sqs.receive_message(rm).await;
+        match rrmr {
+            Err(err) => println!("Error: {}",err),
+            Ok(rmr) => {
+                if let Some(msgs)=rmr.messages {
+                    go_on=msgs.len()>0;
+                    join_all(msgs.into_iter().map(|msg| process_email(msg,&sqs, &s3,conn))).await;
+                }
+            }
+        }
+    }
+    /*
+    let rcnt: Result<i64, Error> = conn.run(|c| 
+        users.select(diesel::dsl::count(usrs::name)).get_result(c)
+    ).await;
+    match rcnt {
+        Ok(cnt)=>println!("users: {}",cnt),
+        Err(e)=>println!("error! {}",e),
+    };*/
+    
+}
+
+async fn process_email(msg:SqsMessage, sqs:&SqsClient, s3: &S3Client, conn: &MainDbConn) {
+    match try_process_email(msg,sqs, s3,conn).await {
+        Err(e)=> println!("Error processing email: {}",e),
+        _=>(),
+    };
+    
+}
+
+async fn try_process_email(msg:SqsMessage, sqs:&SqsClient, s3: &S3Client, conn: &MainDbConn) -> Result<(),Box<dyn std::error::Error>>{
+
+    if let Some(receipt_handle) = msg.receipt_handle{
+        println!("Received SQS message: {}",receipt_handle);
+
+        if let Some(body) = msg.body {
+            let v:Value=serde_json::from_str(&body)?;
+            //println!("Received SNS message: {}",v);
+            if let Value::String(s) = &v["Message"]{    
+                let msg:Value=serde_json::from_str(s)?;
+                //println!("Received SES message: {}",msg["mail"]);
+                //println!("Received Receipt: {}",msg["receipt"]);
+                let action =&msg["receipt"]["action"];
+                if let Value::String(bucket_name)= &action["bucketName"]{
+                    if let Value::String(object_key)= &action["objectKey"]{
+                        println!("Should download from bucket {}, object {}",bucket_name,object_key);        
+                        let gor=s3.get_object(GetObjectRequest{
+                            bucket:bucket_name.clone(),
+                            key: object_key.clone(),
+                            ..Default::default()
+                        }).await?;
+
+                        if let Some(body) = gor.body {
+                            let mut data =Vec::new();
+                            body.into_async_read().read_to_end(&mut data).await?;
+                            /*let email = Email::parse(&data)?;
+                            println!("From: {}@{}",email.sender.address.local_part,email.sender.address.domain);
+                            let rentity=email.mime_entity;
+                            let r_entity=rentity.parse()?;
+                            if let Entity::Multipart{content,..} = r_entity {
+                                for re in content.into_iter(){
+                                    let r_entity2=re.parse()?;
+                                    if let Entity::Text{subtype,value} = r_entity2 {
+                                        println!("MIME entity: {}",subtype);
+                                    }
+                                }
+                            }*/
+                            
+                            let email = parse_mail(&data)?;
+                            let oaddrs= get_uuid_addresses(&email, conn).await?;
+
+                            if let Some(addrs) = oaddrs {
+                                write_attachments(email,addrs,conn).await?;
+                            }
+
+                            // delete S3 object
+                            s3.delete_object(DeleteObjectRequest {bucket:bucket_name.clone(),
+                                key: object_key.clone(),
+                                ..Default::default()}).await?;
+                        }
+                        
+                    }
+                }
+            }
+            // delete SQS message
+            sqs.delete_message(DeleteMessageRequest{
+                    queue_url: String::from(SQS_QUEUE),
+                    receipt_handle: receipt_handle
+            }).await?;
+        }
+    }
+    Ok(())
+
+    
+}
+
+struct Addresses {
+    from: Uuid,
+    shared: Vec<Uuid>,
+}
+
+async fn get_uuid_addresses<'a>(email: &'a ParsedMail<'a>, conn: &'a MainDbConn) -> Result<Option<Addresses>,Box<dyn std::error::Error>> {
+    let mut ofrom= None;
+    let mut shared= vec![];
+    for h in email.headers.iter() {
+        if "From"==&h.get_key() {
+            let list= addrparse_header(&h)?;
+            println!("From: {}",list);
+            if let Some(fr) = list.extract_single_info() {
+                ofrom=Some(ensure_user_exists(&fr.addr,conn).await?);
+            } 
+        } else if "To"==&h.get_key() || "Cc"==&h.get_key(){
+            let list= addrparse_header(&h)?;
+            for ma in list.iter(){
+                match ma {
+                    MailAddr::Single (si) => shared.push(ensure_real_user_exists(&si.addr,conn).await?),
+                    MailAddr::Group(gi)=> {
+                        for si in gi.addrs.iter(){
+                            shared.push(ensure_real_user_exists(&si.addr,conn).await?);
+                        }
+                    },
+                }
+            }
+        }
+        //println!("{}: {}",h.get_key(),h.get_value());
+    }
+    let shared:Vec<Uuid>=shared.into_iter().flatten().collect();
+    Ok(ofrom.map(|from| Addresses{from,shared}))
+
+} 
+
+
+async fn ensure_real_user_exists(user_email: &str, conn: &MainDbConn) -> DRResult<Option<Uuid>> {
+    if !user_email.ends_with("@dataregi.com"){
+        ensure_user_exists(user_email,conn).await.map(|uuid| Some(uuid))
+    } else {
+        Ok(None)
+    }
+}
+
+async fn write_attachments<'a>(email: ParsedMail<'a>, addrs: Addresses, conn: &'a MainDbConn) -> Result<(),Box<dyn std::error::Error>>{
+    for p in email.subparts.iter(){
+        let cd=p.get_content_disposition();
+        if DispositionType::Attachment == cd.disposition{
+            if let Some(file_name) = cd.params.get("filename"){
+                //println!("{}: {:?}",file_name, p.ctype);
+                
+                let data=p.get_body_raw()?;
+                let du = upload_data(addrs.from,file_name.to_owned(),None,Some(p.ctype.mimetype.to_owned()),data,conn).await?;
+                if let Some(doc_id) = du.get_id(){
+                    println!("Uploaded from email: {}->{}",file_name,doc_id);
+                    for uid in addrs.shared.iter(){
+                        add_access_system(doc_id,uid.clone(),conn).await?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn rocket() -> rocket::Rocket<Build> {
     rocket::build()
         .attach(MainDbConn::fairing())
         .attach(AdHoc::on_ignite("Diesel Migrations", run_migrations))
+        .attach(AdHoc::on_liftoff("SQS polling", |rocket| {
+            Box::pin(async move {
+                let conn = MainDbConn::get_one(&rocket)
+                        .await
+                        .expect("database connection");
+                rocket::tokio::spawn(async move {
+                    
+                    let mut interval = time::interval(Duration::from_secs(10));
+                    loop {
+                        sqs_polling(&conn).await;
+                        interval.tick().await;
+                    }
+                });
+            })
+        }))
         .mount(
             "/",
             routes![

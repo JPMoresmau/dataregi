@@ -82,6 +82,24 @@ async fn add_access_internal(ctx: UserContext,uuid: &str,real_userid: Uuid, conn
     
 }
 
+pub async fn add_access_system(uuid: Uuid,real_userid: Uuid, conn: &MainDbConn) -> DRResult<Status>{
+    let accs:i64=conn.run(move |c| {
+        accesses.filter(accs::document_id.eq(uuid)).filter(accs::user_id.eq(real_userid)).count().get_result(c)
+    }).await?;
+    if accs==0{
+        let acc=Access{document_id: uuid,
+            user_id: real_userid,
+            created: Utc::now(),};
+        conn.run(move |c| {
+            diesel::insert_into(accesses)
+            .values(&acc)
+            .execute(c)
+        }).await?;
+    }
+    Ok(Status::NoContent)
+    
+}
+
 #[post("/<uuid>/<email>")]
 async fn add_access_email(ctx: UserContext,uuid: &str,email: &str, conn: MainDbConn) -> DRResult<Status>{
     let user_id = ensure_user_exists(email,&conn).await?;

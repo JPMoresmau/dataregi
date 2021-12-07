@@ -1,3 +1,12 @@
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
 # rustflags = ["-C", "link-arg=-fuse-ld=rust-lld.exe"]
+
+[profile.dev]
+# Disabling debug info speeds up builds a bunch,
+# and we don't rely on it for debugging that much.
+debug = 0
+
+[profile.release]
+incremental = true
+debug = 0 # Set this to 1 or 2 to get more useful backtraces in debugger.

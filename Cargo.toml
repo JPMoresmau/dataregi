@@ -14,6 +14,8 @@ failure = {version = "0.1.8",features = ["derive"]}
 lettre = { version = "0.10.0-rc.1", default-features = false, features = ["builder"] }
 rusoto_core = { version = "0.47", default-features = false, features = ["rustls"] }
 rusoto_ses = { version = "0.47", default-features = false, features = ["rustls"] }
+rusoto_sqs = { version = "0.47", default-features = false, features = ["rustls"] }
+rusoto_s3 = { version = "0.47", default-features = false, features = ["rustls"] }
 base64 = "0.13.0"
 rand = "0.8.4"
 diesel = { version = "1.4.7", features = ["postgres", "r2d2", "uuidv07", "chrono"] }
@@ -23,6 +25,9 @@ chrono = "0.4.19"
 figment = "0.10.6"
 jsonwebtoken = "7.2.0"
 jsonwebtoken-google = "0.1.0"
+futures = "0.3.18"
+#email-parser = { version = "0.5.0", default-features = false, features = ["sender","from","to","cc","mime"]}
+mailparse = "0.13.7"
 
 [dev-dependencies] 
 serial_test = "0.5.1"

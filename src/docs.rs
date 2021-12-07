@@ -40,6 +40,16 @@ pub enum DocumentUpload {
     LimitsReached,
 }
 
+impl DocumentUpload {
+    pub fn get_id(&self) -> Option<Uuid> {
+        match self{
+            DocumentUpload::Ok{id}=>Some(id.clone()),
+            DocumentUpload::AlreadyExists{existing_id,..}=>Some(existing_id.clone()),
+            _=>None,
+        }
+    }
+}
+
 #[post("/?<org>", data = "<upload>")]
 async fn upload_doc(ctx: UserContext,org:Option<&str>,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<DocumentUpload>>> {
     let mut uuids=vec![];
@@ -70,70 +80,76 @@ async fn upload_doc(ctx: UserContext,org:Option<&str>,mut upload: Form<Upload<'_
             };
             file.persist_to(&full).await?;
             let data=read(&full)?;
-            let mut hasher = DefaultHasher::new();
-            data.hash(&mut hasher);
-            let hash= hasher.finish().to_string();
-
-            let uid=ctx.user_id;
-            let h = hash.clone();
-            let sn=short_name.clone();
-            let mut docs=conn.run(move |c| {
-                documents.filter(docs::hash.eq(Some(h))).filter(docs::name.eq(sn)).filter(docs::owner.eq(&uid))
-                .select(docs::id)
-                .load::<Uuid>(c)
-            }).await?;
-            if let Some(doc)=docs.pop() {
-                uuids.push(DocumentUpload::AlreadyExists{upload_name:short_name, existing_id:doc});
-            } else {
-                let olt=conn.run(move |c| {
-                    limits.filter(lts::user_id.eq(&uid)).first::<Limit>(c).optional()
-                }).await?;
-                let lt = match olt {
-                    Some(lt)=>lt,
-                    None=> {
-                        conn.run(move |c| {
-                            diesel::insert_into(limits)
-                                .values(lts::user_id.eq(&uid))
-                                .execute(c)?;
-                            limits.filter(lts::user_id.eq(&uid)).first::<Limit>(c)
-                        }).await?
-                    },
-                };
-                let lt_updated=LimitUpdate{current_documents:lt.current_documents+1,current_size:lt.current_size+data.len() as i64};
-                if lt_updated.current_documents>lt.max_documents || lt_updated.current_size>lt.max_size {
-                    uuids.push(DocumentUpload::LimitsReached);
-                } else {
-                  
-                    let doc = Document{
-                        id: Uuid::new_v4(),
-                        name: short_name,
-                        created: Utc::now(),
-                        owner: ctx.user_id,
-                        org_id,
-                        mime: file.content_type().map(|ct| format!("{}",ct)),
-                        size: data.len() as i64,
-                        data,
-                        hash: Some(hash)
-                    };
-                    
-                    let doc_id=conn.run(move |c| {
-                        let id = diesel::insert_into(documents)
-                            .values(&doc)
-                            .execute(c)
-                            .map(|_| doc.id);
-                        diesel::update(limits.filter(lts::user_id.eq(&uid))).set(lt_updated).execute(c)?;
-                        id
-                    }).await?;
-                    uuids.push(DocumentUpload::Ok{id:doc_id});
-
-                    
-                }
-            } 
+            let du=upload_data(ctx.user_id, short_name,  org_id, file.content_type().map(|ct| format!("{}",ct)), data, &conn).await?;
+            uuids.push(du);
+                        
             remove_file(&full)?;
         }
     }
     Ok(Json(uuids))
 }
+
+pub async fn upload_data(uid: Uuid, short_name: String, org_id: Option<Uuid>, content_type: Option<String>, data: Vec<u8>, conn: &MainDbConn) -> DRResult<DocumentUpload> {
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    let hash= hasher.finish().to_string();
+
+    let h = hash.clone();
+    let sn=short_name.clone();
+    let mut docs=conn.run(move |c| {
+        documents.filter(docs::hash.eq(Some(h))).filter(docs::name.eq(sn)).filter(docs::owner.eq(&uid))
+        .select(docs::id)
+        .load::<Uuid>(c)
+    }).await?;
+    if let Some(doc)=docs.pop() {
+        return Ok(DocumentUpload::AlreadyExists{upload_name:short_name, existing_id:doc});
+    } else {
+        let olt=conn.run(move |c| {
+            limits.filter(lts::user_id.eq(&uid)).first::<Limit>(c).optional()
+        }).await?;
+        let lt = match olt {
+            Some(lt)=>lt,
+            None=> {
+                conn.run(move |c| {
+                    diesel::insert_into(limits)
+                        .values(lts::user_id.eq(&uid))
+                        .execute(c)?;
+                    limits.filter(lts::user_id.eq(&uid)).first::<Limit>(c)
+                }).await?
+            },
+        };
+        let lt_updated=LimitUpdate{current_documents:lt.current_documents+1,current_size:lt.current_size+data.len() as i64};
+        if lt_updated.current_documents>lt.max_documents || lt_updated.current_size>lt.max_size {
+            return Ok(DocumentUpload::LimitsReached);
+        } else {
+            
+            let doc = Document{
+                id: Uuid::new_v4(),
+                name: short_name,
+                created: Utc::now(),
+                owner: uid,
+                org_id,
+                mime: content_type,
+                size: data.len() as i64,
+                data,
+                hash: Some(hash)
+            };
+            
+            let doc_id=conn.run(move |c| {
+                let id = diesel::insert_into(documents)
+                    .values(&doc)
+                    .execute(c)
+                    .map(|_| doc.id);
+                diesel::update(limits.filter(lts::user_id.eq(&uid))).set(lt_updated).execute(c)?;
+                id
+            }).await?;
+            return Ok(DocumentUpload::Ok{id:doc_id});
+
+            
+        }
+    }
+}
+
 
 #[get("/<uuid>")]
 async fn get_doc(ctx: UserContext,uuid: &str, conn: MainDbConn) -> DRResult<Json<Document>>{
