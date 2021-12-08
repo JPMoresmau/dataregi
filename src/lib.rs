@@ -31,7 +31,7 @@ use std::{env};
 
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use chrono::Utc;
+use chrono::{DateTime,Utc};
 use diesel::prelude::*;
 use futures::future::join_all;
 
@@ -50,11 +50,14 @@ use schema::limits::user_id;
 use schema::limits::dsl::limits as lts;
 use schema::members::dsl::members;
 use schema::members as mbrs;
+use schema::tokens::dsl::tokens;
+use schema::tokens as toks;
 
 pub mod accesses;
 use crate::accesses::add_access_system;
 pub mod docs;
 use crate::docs::upload_data;
+use crate::model::Token;
 pub mod limits;
 pub mod orgs;
 
@@ -126,7 +129,7 @@ pub fn index_user(userid: UserContext) -> Template {
 async fn send_login_email(
     email: Json<LoginEmail<'_>>,
     config: &State<Config>,
-    tokens: &State<EmailTokens>,
+    conn: MainDbConn,
 ) -> Result<status::Accepted<Json<String>>, status::Custom<String>> {
     let client = SesClient::new(config.aws_region.clone());
 
@@ -135,12 +138,20 @@ async fn send_login_email(
         .take(20)
         .map(char::from)
         .collect();
-    tokens
-        .tokens
-        .lock()
-        .unwrap()
-        .insert(token.clone(), LoginRegistration::new(email.address));
+    let addr=email.address.into();
+    let tk=token.clone();
+    conn.run(move |c| {
+        diesel::insert_into(tokens)
+            .values(Token{
+                token:tk,
+                email: addr,
+                created: Utc::now(),
+            })
+            .execute(c)
+    }).await
+    .map_err(|e| status::Custom(Status::InternalServerError, e.to_string()))?;
 
+   
     let link = if config.port == 443 {
         format!(
             "https://{}.dataregi.com/loginToken?token={}",
@@ -173,18 +184,23 @@ async fn send_login_email(
 async fn login_from_token(
     token: &str,
     config: &State<Config>,
-    tokens: &State<EmailTokens>,
     cookies: &CookieJar<'_>,
     conn: MainDbConn,
 ) -> Result<Redirect,Template> {
-    let maybe_reg = tokens.tokens.lock().unwrap().remove(token);
+    let tk=token.to_string();
+    let maybe_reg = conn.run(move |c| {
+        diesel::delete(tokens.filter(toks::token.eq(tk)))
+            .returning((toks::email,toks::created)).get_result::<(String,DateTime<Utc>)>(c).optional()
+    }).await
+    .map_err(|e| Template::render("index", &IndexContext { error: &e.to_string(), message: "",callback_name: &callback_address(config), }))?;
+  
 
     let error= 
-        if let Some(reg) = maybe_reg {
-            if reg.timestamp.elapsed().as_secs() > config.token_lifespan_minutes * 60 {
+        if let Some((address,timestamp)) = maybe_reg {
+            if Utc::now().signed_duration_since(timestamp).num_seconds() > (config.token_lifespan_minutes * 60) as i64 {
                 Some(String::from("Could not log in, expired token"))
             } else {
-                do_login(&reg.address, None, cookies, &conn).await
+                do_login(&address, None, cookies, &conn).await
             }
         } else {
             Some(String::from("Could not log in, invalid token"))
@@ -615,6 +631,5 @@ pub fn rocket() -> rocket::Rocket<Build> {
         .register("/",catchers!(no_auth))
         .register("/api",catchers!(no_auth_api))
         .attach(AdHoc::config::<Config>())
-        .manage(EmailTokens::default())
         .attach(Template::fairing())
 }

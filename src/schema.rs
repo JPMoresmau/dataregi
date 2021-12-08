@@ -48,6 +48,14 @@ table! {
 }
 
 table! {
+    tokens (token) {
+        token -> Varchar,
+        email -> Varchar,
+        created -> Timestamptz,
+    }
+}
+
+table! {
     users (id) {
         id -> Uuid,
         email -> Varchar,
@@ -72,5 +80,6 @@ allow_tables_to_appear_in_same_query!(
     limits,
     members,
     organizations,
+    tokens,
     users,
 );

@@ -129,3 +129,10 @@ pub struct MemberInfo {
     pub org_admin: bool,
 }
 
+#[derive(Queryable, Identifiable, Insertable, Deserialize, Serialize, Debug)]
+#[primary_key(token)]
+pub struct Token {
+    pub token: String,
+    pub email: String,
+    pub created: DateTime<Utc>,
+}

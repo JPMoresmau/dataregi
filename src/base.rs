@@ -12,9 +12,6 @@ use rocket::http::{ContentType,Status};
 use rocket::request::Request;
 use rocket::response::{Responder, Result, Response};
 use rocket_sync_db_pools::database;
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::Instant;
 use figment::value::magic::RelativePathBuf;
 use uuid::Uuid;
 use std::fmt;
@@ -83,31 +80,6 @@ pub struct Config {
     pub aws_queue: String,
 }
 
-pub struct LoginRegistration {
-    pub address: String,
-    pub timestamp: Instant,
-}
-
-impl LoginRegistration {
-    pub fn new<S: Into<String>>(address: S) -> Self {
-        LoginRegistration {
-            address: address.into(),
-            timestamp: Instant::now(),
-        }
-    }
-}
-
-pub struct EmailTokens {
-    pub tokens: Mutex<HashMap<String, LoginRegistration>>,
-}
-
-impl Default for EmailTokens {
-    fn default() -> Self {
-        EmailTokens {
-            tokens: Mutex::new(HashMap::new()),
-        }
-    }
-}
 
 #[database("postgres_main")]
 pub struct MainDbConn(diesel::PgConnection);
