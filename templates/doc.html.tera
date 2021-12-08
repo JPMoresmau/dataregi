@@ -36,6 +36,13 @@
                     <div class="col-9" id="doc_size">
                     </div>
                 </div>
+                <div class="row" id="orgRow" style="display: none;">
+                    <div class="col-3">
+                       Organization
+                    </div>
+                    <div class="col-9" id="orgName">
+                    </div>
+                </div>
                 <div class="row">
                     <div class="col-12">
                         <em id="ownershipStatus"></em>
@@ -201,6 +208,10 @@
                     } 
                     document.getElementById('ownershipStatus').innerText=ownerStatus;
 
+                    if (docInfo['org_id']){
+                        await showOrg(docInfo['org_id']);
+                    }
+
                     let pagination=new Pagination('version_list','/api/docs/count',{'owner':false,'distinct':false,'name':docInfo['name'],'except':id,'queryDate':docDate});
                     pagination.onCount=showDocCount;
                     resetDocList(pagination,false);
@@ -211,6 +222,25 @@
                
             } else {
                 showError("No document ID provided");
+            }
+        }
+
+        async function showOrg(org_id){
+            const query="/api/orgs/"+encodeURIComponent(org_id);
+            const response = await fetch(query, {
+                method: 'GET'
+            })
+            if (!response.ok){
+                showError(await response.text());
+            } else {
+                const orgInfo=await response.json();
+                const orgName=orgInfo['name'];
+
+                document.getElementById('orgName').innerText=orgName;
+                document.getElementById('orgRow').style.display='flex';
+               
+                showMembers();
+
             }
         }
 

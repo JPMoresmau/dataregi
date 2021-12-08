@@ -21,6 +21,7 @@ use std::fmt;
 use std::error::Error as StdError;
 use rocket::serde::json::Json;
 use crate::model::Member;
+use rusoto_core::Region;
 
 pub const COOKIE: &str = "user";
 
@@ -72,12 +73,14 @@ pub struct LoginEmail<'r> {
     pub address: &'r str,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize,Clone)]
 pub struct Config {
     pub port: u16,
     pub callback_name: String,
     pub token_lifespan_minutes: u64,
     pub temp_dir: RelativePathBuf,
+    pub aws_region: Region,
+    pub aws_queue: String,
 }
 
 pub struct LoginRegistration {

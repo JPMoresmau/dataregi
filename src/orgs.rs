@@ -22,6 +22,13 @@ async fn get_organization(_ctx: UserContext, org: &str, conn: MainDbConn) -> DRR
     Ok(Json(org))
 }
 
+pub async fn get_organization_by_name(org: String, conn: &MainDbConn) -> DRResult<Option<Organization>>{
+    
+    Ok(conn.run(move |c| {
+        organizations.filter(orgs::name.ilike(org)).first(c).optional()
+    }).await?)
+    
+}
 
 #[get("/count?<member>")]
 async fn get_organization_count(ctx: UserContext, member: bool, conn: MainDbConn) -> DRResult<Json<i64>>{
