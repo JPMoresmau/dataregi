@@ -53,7 +53,7 @@ impl DocumentUpload {
 #[post("/?<org>", data = "<upload>")]
 async fn upload_doc(ctx: UserContext,org:Option<&str>,mut upload: Form<Upload<'_>>, config: &State<Config>, conn: MainDbConn) -> DRResult<Json<Vec<DocumentUpload>>> {
     let mut uuids=vec![];
-    //println!("files:{}",upload.files.len());
+    info!("File upload:{}",upload.files.len());
     let org_id=match org {
         Some(u)=>Uuid::parse_str(u).map(Some),
         None=>Ok(None),
@@ -66,7 +66,7 @@ async fn upload_doc(ctx: UserContext,org:Option<&str>,mut upload: Form<Upload<'_
 
     for file in upload.files.iter_mut() {
         if let Some(name) = file.name() {
-            //println!("name:{}",name);
+            //debug!("name:{}",name);
             let mut full=PathBuf::new();
             full.push(&config.temp_dir.original());
             full.push(&ctx.user_id.to_string());
@@ -287,7 +287,7 @@ async fn list_docs(ctx: UserContext, conn: MainDbConn
             };
             query2 = query2.limit(real_limit as i64)
                 .offset(real_offset);
-            //println!("{}",diesel::debug_query(&query2));
+            //debug!("{}",diesel::debug_query(&query2));
             query2.load::<DocumentInfo>(c)
          } else {
             query.limit(real_limit as i64)
@@ -297,8 +297,8 @@ async fn list_docs(ctx: UserContext, conn: MainDbConn
 
         
         }).await?;
-    //println!("length: {}",vdocs.len());
-    //println!("vdocs: {:?}",vdocs);
+    //debug!("length: {}",vdocs.len());
+    //debug!("vdocs: {:?}",vdocs);
     
     Ok(Json(vdocs))
 }
@@ -343,39 +343,11 @@ async fn count_docs(ctx: UserContext, conn: MainDbConn
         }
 
         if distinct {
-            /*let query2=query.select(docs::name);
-            let debug = diesel::debug_query(&query2);
-            println!("Debug:{}",debug);
-            diesel::sql_query(format!("select count(*) as count from ({}) t0",debug.to_string())).get_result::<GenericCount>(c).map(|gc| gc.count)*/
             query.select(docs::name).count_sub_select().get_result(c)
         } else {
             query.select(diesel::dsl::count(docs::name)).get_result(c)
         }
         
-        /*let mut query = String::new();
-        if distinct {
-            query.push_str("select count(*) as count from ( select name from documents ");
-        } else {
-            query.push_str("select count(*) as count from documents ");
-        }
-        if let Some (real_name) = name {
-            if real_name.contains('*'){
-                query.push_str(" name ilike $1");
-                //real_name.replace("*","%")));
-            } else {
-                query.push_str(" name ilike $1");
-            }
-        }
-        if owner {
-            query.push_str("owner=$1");
-        }
-        
-        if distinct {
-            query.push_str(") t0");
-        }
-        diesel::sql_query(query).bind().get_result::<GenericCount>(c).map(|gc| gc.count)*/
-        //query
-        //    .get_result(c)
         }).await?;
    
     Ok(Json(cnt))

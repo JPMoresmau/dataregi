@@ -61,9 +61,6 @@ use crate::model::Token;
 pub mod limits;
 pub mod orgs;
 
-//const SQS_QUEUE: &str ="https://sqs.eu-west-1.amazonaws.com/334979221948/dataregi-emails-queue";
-
-
 #[get("/static/<path..>", rank = 3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
     let path = Path::new(relative!("site")).join(path);
@@ -163,7 +160,7 @@ async fn send_login_email(
             config.callback_name, config.port, token
         )
     };
-    println!("Sending link: {}",link);
+    info!("Sending link: {} to {} ",link, email.address);
     send_email_ses(
         &client,
         "login@dataregi.com",
@@ -188,11 +185,16 @@ async fn login_from_token(
     conn: MainDbConn,
 ) -> Result<Redirect,Template> {
     let tk=token.to_string();
+    info!("Receiving login token: {}",tk);
     let maybe_reg = conn.run(move |c| {
         diesel::delete(tokens.filter(toks::token.eq(tk)))
             .returning((toks::email,toks::created)).get_result::<(String,DateTime<Utc>)>(c).optional()
     }).await
-    .map_err(|e| Template::render("index", &IndexContext { error: &e.to_string(), message: "",callback_name: &callback_address(config), }))?;
+    .map_err(|e| {
+        error!("Could not get and delete token: {}", e);
+        Template::render("index", &IndexContext { error: &e.to_string(), message: "",callback_name: &callback_address(config), })
+    }
+    )?;
   
 
     let error= 
@@ -206,6 +208,7 @@ async fn login_from_token(
             Some(String::from("Could not log in, invalid token"))
         };
     if let Some(err) = error {
+        error!("Error logging in via token: {}",err);
         let ctx = IndexContext { error: &err, message: "",callback_name: &callback_address(config), };
         Err(Template::render("index", &ctx))
     } else {
@@ -358,8 +361,8 @@ pub struct Claims {
 async fn google_redirect(google: Form<GoogleData<'_>>, cookies: &CookieJar<'_>, config: &State<Config>,conn: MainDbConn,) -> Result<Redirect,Template> {
     
     let mstr=cookies.get("g_csrf_token").map(|c| c.value());
-    //println!("cookie: {:?}",mstr);
-    //println!("data: {:?}",google);
+    //debug!("cookie: {:?}",mstr);
+    //debug!("data: {:?}",google);
     
     let error=
         if mstr==Some(google.g_csrf_token){
@@ -377,6 +380,7 @@ async fn google_redirect(google: Form<GoogleData<'_>>, cookies: &CookieJar<'_>, 
             Some(String::from("Error matching token and form"))
         };
     if let Some(err) = error {
+        error!("Error logging in via Google: {}",err);
         let ctx = IndexContext { error: &err, message: "",callback_name: &callback_address(config), };
         Err(Template::render("index", &ctx))
     } else {
@@ -409,7 +413,7 @@ async fn sqs_polling<'a>(conn: &'a MainDbConn,config: &Config){
         };
         let rrmr=sqs.receive_message(rm).await;
         match rrmr {
-            Err(err) => println!("Error: {}",err),
+            Err(err) => error!("Error receiving SQS message: {}",err),
             Ok(rmr) => {
                 if let Some(msgs)=rmr.messages {
                     go_on=msgs.len()>0;
@@ -418,20 +422,12 @@ async fn sqs_polling<'a>(conn: &'a MainDbConn,config: &Config){
             }
         }
     }
-    /*
-    let rcnt: Result<i64, Error> = conn.run(|c| 
-        users.select(diesel::dsl::count(usrs::name)).get_result(c)
-    ).await;
-    match rcnt {
-        Ok(cnt)=>println!("users: {}",cnt),
-        Err(e)=>println!("error! {}",e),
-    };*/
     
 }
 
 async fn process_email(msg:SqsMessage, sqs:&SqsClient, s3: &S3Client, conn: &MainDbConn,config: &Config) {
     match try_process_email(msg,sqs, s3,conn,config).await {
-        Err(e)=> println!("Error processing email: {}",e),
+        Err(e)=> error!("Error processing email: {}",e),
         _=>(),
     };
     
@@ -440,19 +436,19 @@ async fn process_email(msg:SqsMessage, sqs:&SqsClient, s3: &S3Client, conn: &Mai
 async fn try_process_email(msg:SqsMessage, sqs:&SqsClient, s3: &S3Client, conn: &MainDbConn,config: &Config) -> Result<(),Box<dyn std::error::Error>>{
 
     if let Some(receipt_handle) = msg.receipt_handle{
-        println!("Received SQS message: {}",receipt_handle);
+        info!("Received SQS message: {}",receipt_handle);
 
         if let Some(body) = msg.body {
             let v:Value=serde_json::from_str(&body)?;
-            //println!("Received SNS message: {}",v);
+            //info!("Received SNS message: {}",v);
             if let Value::String(s) = &v["Message"]{    
                 let msg:Value=serde_json::from_str(s)?;
-                //println!("Received SES message: {}",msg["mail"]);
-                //println!("Received Receipt: {}",msg["receipt"]);
+                //info!("Received SES message: {}",msg["mail"]);
+                //info!("Received Receipt: {}",msg["receipt"]);
                 let action =&msg["receipt"]["action"];
                 if let Value::String(bucket_name)= &action["bucketName"]{
                     if let Value::String(object_key)= &action["objectKey"]{
-                        println!("Should download from bucket {}, object {}",bucket_name,object_key);        
+                        info!("Should download from bucket {}, object {}",bucket_name,object_key);        
                         let gor=s3.get_object(GetObjectRequest{
                             bucket:bucket_name.clone(),
                             key: object_key.clone(),
@@ -463,14 +459,14 @@ async fn try_process_email(msg:SqsMessage, sqs:&SqsClient, s3: &S3Client, conn: 
                             let mut data =Vec::new();
                             body.into_async_read().read_to_end(&mut data).await?;
                             /*let email = Email::parse(&data)?;
-                            println!("From: {}@{}",email.sender.address.local_part,email.sender.address.domain);
+                            info!("From: {}@{}",email.sender.address.local_part,email.sender.address.domain);
                             let rentity=email.mime_entity;
                             let r_entity=rentity.parse()?;
                             if let Entity::Multipart{content,..} = r_entity {
                                 for re in content.into_iter(){
                                     let r_entity2=re.parse()?;
                                     if let Entity::Text{subtype,value} = r_entity2 {
-                                        println!("MIME entity: {}",subtype);
+                                        info!("MIME entity: {}",subtype);
                                     }
                                 }
                             }*/
@@ -528,7 +524,7 @@ async fn get_uuid_addresses<'a>(email: &'a ParsedMail<'a>, conn: &'a MainDbConn)
     for h in email.headers.iter() {
         if "From"==&h.get_key() {
             let list= addrparse_header(&h)?;
-            println!("From: {}",list);
+            info!("From: {}",list);
             if let Some(fr) = list.extract_single_info() {
                 ofrom=Some(ensure_user_exists(&fr.addr,conn).await?);
             } 
@@ -545,7 +541,7 @@ async fn get_uuid_addresses<'a>(email: &'a ParsedMail<'a>, conn: &'a MainDbConn)
                 }
             }
         }
-        //println!("{}: {}",h.get_key(),h.get_value());
+        //info!("{}: {}",h.get_key(),h.get_value());
     }
     Ok(ofrom.map(|from| Addresses{from,shared,orgs}))
 
@@ -558,7 +554,7 @@ async fn ensure_real_user_exists(user_email: &str, shared: &mut Vec<Uuid>, orgs:
         if let Some(org) = get_organization_by_name(String::from(org_name),conn).await? {
             orgs.push(org.id);
         } else if "register"!=org_name{
-            println!("Cannot find organization {}",org_name);
+            error!("Cannot find organization {}",org_name);
         }
     } else {
         shared.push(ensure_user_exists(user_email,conn).await?);
@@ -572,12 +568,12 @@ async fn write_attachments<'a>(email: ParsedMail<'a>, mut addrs: Addresses, conn
         let cd=p.get_content_disposition();
         if DispositionType::Attachment == cd.disposition{
             if let Some(file_name) = cd.params.get("filename"){
-                //println!("{}: {:?}",file_name, p.ctype);
+                //info!("{}: {:?}",file_name, p.ctype);
                 
                 let data=p.get_body_raw()?;
                 let du = upload_data(addrs.from,file_name.to_owned(),org_id,Some(p.ctype.mimetype.to_owned()),data,conn).await?;
                 if let Some(doc_id) = du.get_id(){
-                    println!("Uploaded from email: {}->{}",file_name,doc_id);
+                    info!("Uploaded from email: {}->{}",file_name,doc_id);
                     for uid in addrs.shared.iter(){
                         add_access_system(doc_id,uid.clone(),conn).await?;
                     }
@@ -599,6 +595,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
                         .await
                         .expect("database connection");
                 let config: Config = (*rocket.state::<Config>().expect("config")).clone();
+                info!("Spawning SQL polling thread...");
                 rocket::tokio::spawn(async move {
                     let mut interval = time::interval(Duration::from_secs(10));
                     loop {

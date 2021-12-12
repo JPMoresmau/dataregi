@@ -102,7 +102,7 @@ impl StructuredError {
 
 impl<'r,'o: 'r> Responder<'r,'o> for StructuredError {
     fn respond_to(self, request: &'r Request<'_>) -> Result<'o> {
-        println!("error: {}",self);
+        error!("Structured Error: {}",self);
         
         Response::build_from(Json(&self).respond_to(request).unwrap())
             .status(self.status)
