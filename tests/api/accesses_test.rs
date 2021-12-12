@@ -1,5 +1,5 @@
 use dataregi::{model::{User,Document,DocumentInfo}};
-use crate::common::{setup,with_test_login,upload,delete, json_ok_response};
+use crate::common::{setup,with_test_login,upload, upload_user,delete,delete_user, json_ok_response};
 use rocket::http::{ContentType, Status};
 use serial_test::serial;
 
@@ -190,4 +190,64 @@ fn get_docs_via_access() {
 
     delete(&client, &[uuid]);
 
+}
+
+#[test]
+#[serial]
+fn get_versions_via_access() {
+    let client= setup();
+
+    let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
+
+    let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid1,"b9518d55-3256-4b96-81d0-65b1d7c4fb32")), 1).dispatch();
+    assert_eq!(response.status(),Status::NoContent);
+
+    let uuid2 = upload_user(&client, "test_data/v2/1sheet1cell.ods",2);
+
+    let response= with_test_login(client.put(format!("/api/accesses/{}/{}",uuid2,"b9518d55-3256-4b96-81d0-65b1d7c4fb31")), 2).dispatch();
+    assert_eq!(response.status(),Status::NoContent);
+
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?name=1sheet1cell.ods"), 1));
+    assert_eq!(2,docs.len());
+    let doci1=&docs[0];
+    let doci2=&docs[1];
+    
+    assert_eq!(doci1.id,uuid2);
+    assert_eq!(doci2.id,uuid1);
+
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?name=1sheet1cell.ods"), 2));
+    assert_eq!(2,docs.len());
+    let doci1=&docs[0];
+    let doci2=&docs[1];
+    
+    assert_eq!(doci1.id,uuid2);
+    assert_eq!(doci2.id,uuid1);
+
+    delete(&client, &[uuid1]);
+    delete_user(&client, &[uuid2],2);
+}
+
+#[test]
+#[serial]
+fn get_versions_no_access() {
+    let client= setup();
+
+    let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
+   
+    let uuid2 = upload_user(&client, "test_data/v2/1sheet1cell.ods",2);
+   
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?name=1sheet1cell.ods"), 1));
+    assert_eq!(1,docs.len());
+    let doci1=&docs[0];
+    
+    assert_eq!(doci1.id,uuid1);
+    
+    let docs:Vec<DocumentInfo> =json_ok_response(with_test_login(client.get("/api/docs/?name=1sheet1cell.ods"), 2));
+    assert_eq!(1,docs.len());
+    let doci2=&docs[0];
+    
+    assert_eq!(doci2.id,uuid2);
+
+    delete(&client, &[uuid1]);
+    delete_user(&client, &[uuid2],2);
 }

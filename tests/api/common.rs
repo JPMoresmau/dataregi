@@ -28,11 +28,11 @@ pub fn with_org_login<'a>(req: LocalRequest<'a>, user_idx: u8, members: &[Member
     req.private_cookie(Cookie::new("user", serde_json::to_string(&ctx).unwrap()))
 }
 
-pub fn do_upload(client: &Client, path: &str) -> DocumentUpload {
-    do_upload_org(client, path, None)
+pub fn do_upload(client: &Client, path: &str, user_idx: u8) -> DocumentUpload {
+    do_upload_org(client, path, user_idx, None)
 }
 
-pub fn do_upload_org(client: &Client, path: &str, member: Option<Member>) -> DocumentUpload {
+pub fn do_upload_org(client: &Client, path: &str, user_idx: u8, member: Option<Member>) -> DocumentUpload {
 
     let file = fs::read(path).unwrap();
     let mut cnt=vec![];
@@ -49,7 +49,7 @@ pub fn do_upload_org(client: &Client, path: &str, member: Option<Member>) -> Doc
         Some(m)=>format!("/api/docs?org={}",m.org_id),
     };
 
-    let req = with_org_login(client.post(url), 1,&member.into_iter().collect::<Vec<Member>>())
+    let req = with_org_login(client.post(url), user_idx,&member.into_iter().collect::<Vec<Member>>())
         .header(ContentType::with_params("multipart", "form-data", ("boundary", "---------------------------3511489321811197009899980000")))
         .header(Header::new("Content-Length",format!("{}",cnt.len())))
         .body(cnt);
@@ -66,22 +66,31 @@ pub fn do_upload_org(client: &Client, path: &str, member: Option<Member>) -> Doc
 }
 
 pub fn upload(client: &Client, path: &str) -> Uuid {
-    match do_upload(client,path) {
+    upload_user(client,path,1)
+}
+
+pub fn upload_user(client: &Client, path: &str, user_idx: u8) -> Uuid {
+    match do_upload(client,path, user_idx) {
         DocumentUpload::Ok{id} => id,
         du => panic!("unexpected upload result:{:?}",du),
     }
 }
 
+
 pub fn upload_org(client: &Client, path: &str, member: Member) -> Uuid {
-    match do_upload_org(client,path,Some(member)) {
+    match do_upload_org(client,path,1, Some(member)) {
         DocumentUpload::Ok{id} => id,
         du => panic!("unexpected upload result:{:?}",du),
     }
 }
 
 pub fn delete(client: &Client, uuids: &[Uuid]) {
+    delete_user(client, uuids, 1)
+}
+
+pub fn delete_user(client: &Client, uuids: &[Uuid], user_idx: u8) {
     for uuid in uuids.iter(){
-        let response= with_test_login(client.delete(format!("/api/docs/{}",uuid)), 1).dispatch();
+        let response= with_test_login(client.delete(format!("/api/docs/{}",uuid)), user_idx).dispatch();
         assert_eq!(response.status(),Status::NoContent);
     }
 }

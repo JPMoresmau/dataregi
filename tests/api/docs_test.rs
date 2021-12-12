@@ -336,7 +336,7 @@ fn detect_duplicate(){
 
     let uuid1 = upload(&client, "test_data/1sheet1cell.ods");
 
-    let upd = do_upload(&client, "test_data/1sheet1cell.ods");
+    let upd = do_upload(&client, "test_data/1sheet1cell.ods", 1);
     match upd {
         DocumentUpload::AlreadyExists{upload_name, existing_id}=> {
             assert_eq!(uuid1,existing_id);

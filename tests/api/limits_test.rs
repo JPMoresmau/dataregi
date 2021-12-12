@@ -95,7 +95,7 @@ fn enforced() {
     assert_eq!(7651,lt.current_size);
 
     // too many docs
-    let du= do_upload(&client, "test_data/1sheet1col.ods");  
+    let du= do_upload(&client, "test_data/1sheet1col.ods", 1);  
     assert_eq!(DocumentUpload::LimitsReached,du);
 
     delete(&client,&[uuid]);
@@ -107,7 +107,7 @@ fn enforced() {
     assert_eq!(response.status(),Status::NoContent);
 
     // too big
-    let du= do_upload(&client, "test_data/1sheet1col.ods");  
+    let du= do_upload(&client, "test_data/1sheet1col.ods", 1);  
     assert_eq!(DocumentUpload::LimitsReached,du);
 
     let cnt="{\"max_documents\":100,\"max_size\":1048576000}";
