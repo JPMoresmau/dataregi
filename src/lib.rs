@@ -71,9 +71,9 @@ async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
 
 #[get("/favicon.ico")]
 async fn favicon() -> Result<NamedFile, NotFound<String>> {
-    static_files(PathBuf::from("favicon.ico")).await
-
+    static_files(PathBuf::from("/static/favicon.ico")).await
 }
+
 
 fn callback_address(config: &State<Config>) -> String {
      if config.port == 443 {
