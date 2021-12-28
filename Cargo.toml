@@ -2,7 +2,9 @@
 name = "dataregi"
 version = "0.1.0"
 edition = "2018"
-
+[[bin]]
+name = "dataregi"
+path = "src/main.rs"
 
 [dependencies]
 serde = "1.0.130"

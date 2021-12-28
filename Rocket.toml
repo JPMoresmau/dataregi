@@ -18,6 +18,8 @@ callback_name = "local"
 
 [release]
 callback_name = "www"
+address = "0.0.0.0"
+port = 443
 
 [default.tls]
 certs = "dataregi.com/fullchain.pem"

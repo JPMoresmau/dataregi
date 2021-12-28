@@ -1,0 +1,1 @@
+docker run --rm -w=. -v .:/usr/src/dataregi -w /usr/src/dataregi rust:1.24.3 cargo build --release
