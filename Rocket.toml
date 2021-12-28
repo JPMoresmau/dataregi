@@ -1,10 +1,14 @@
 [default]
 template_dir = "templates"
+
 token_lifespan_minutes = 10
+max_tries_minutes = 5
+
 secret_key = "Y7JlcWBdCOhknIxnMkFlhtU7+tPF/V1x4X6vAzFqtCs="
 
 aws_region = ["eu-west-1",]
 aws_queue = "https://sqs.eu-west-1.amazonaws.com/334979221948/dataregi-emails-queue"
+
 
 [limits]
 file= "10Mib"

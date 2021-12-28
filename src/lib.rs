@@ -21,6 +21,7 @@ use rocket::{State};
 use rocket::{Build, Rocket};
 use rocket::tokio::{time,io::AsyncReadExt};
 use rocket_dyn_templates::Template;
+use std::ops::Sub;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use lettre::Message;
@@ -60,6 +61,8 @@ use crate::docs::upload_data;
 use crate::model::Token;
 pub mod limits;
 pub mod orgs;
+pub mod profiles;
+
 
 #[get("/static/<path..>", rank = 3)]
 async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
@@ -127,15 +130,28 @@ async fn send_login_email(
     email: Json<LoginEmail<'_>>,
     config: &State<Config>,
     conn: MainDbConn,
-) -> Result<status::Accepted<Json<String>>, status::Custom<String>> {
+) -> Result<status::Accepted<Json<String>>, status::Custom<Json<String>>> {
     let client = SesClient::new(config.aws_region.clone());
+    let addr: String =email.address.into();
+
+    let last_minute=Utc::now().sub(chrono::Duration::minutes(1));
+    let tries:i64 = conn.run(move |c| {
+        tokens.filter(toks::email.eq(addr)).filter(toks::created.ge(last_minute)).count().get_result(c)
+    }).await
+        .map_err(|e| status::Custom(Status::InternalServerError, Json(e.to_string())))?;
+
+    if tries>config.max_tries_minutes{
+        return Err(status::Custom(Status::TooManyRequests,Json(String::from("Too many requests"))));
+    }
+
+    let addr=email.address.into();
 
     let token: String = thread_rng()
         .sample_iter(&Alphanumeric)
         .take(20)
         .map(char::from)
         .collect();
-    let addr=email.address.into();
+    
     let tk=token.clone();
     conn.run(move |c| {
         diesel::insert_into(tokens)
@@ -146,7 +162,7 @@ async fn send_login_email(
             })
             .execute(c)
     }).await
-    .map_err(|e| status::Custom(Status::InternalServerError, e.to_string()))?;
+    .map_err(|e| status::Custom(Status::InternalServerError, Json(e.to_string())))?;
 
    
     let link = if config.port == 443 {
@@ -172,7 +188,7 @@ async fn send_login_email(
         ),
     )
     .await
-    .map_err(|e| status::Custom(Status::InternalServerError, e.to_string()))?;
+    .map_err(|e| status::Custom(Status::InternalServerError, Json(e.to_string())))?;
 
     Ok(status::Accepted(Some(Json(format!("An email has been sent to {}, please click on the link it contains to login!",email.address)))))
 }
@@ -625,6 +641,7 @@ pub fn rocket() -> rocket::Rocket<Build> {
         .mount("/api/accesses",accesses::routes())
         .mount("/api/limits",limits::routes())
         .mount("/api/orgs",orgs::routes())
+        .mount("/api/profiles",profiles::routes())
         .register("/",catchers!(no_auth))
         .register("/api",catchers!(no_auth_api))
         .attach(AdHoc::config::<Config>())

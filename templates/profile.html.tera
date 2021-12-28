@@ -16,6 +16,13 @@
                         <h3>Your profile</h3>
                     </div>
                 </div>
+                <div class="row">
+                    <div class="col-6">
+                        Your email address
+                    </div>
+                    <div class="col-6" id="field_email">
+                    </div>
+                </div>
                 {% if site_admin %}
                 <div class="row">
                     <div class="col-12">
@@ -40,6 +47,22 @@
     {% include "list" %}
     
     <script>
+
+        async function loadProfile(){
+            const query="/api/profiles";
+            const response = await fetch(query, {
+                method: 'GET'
+            })
+            if (!response.ok){
+                showError(await response.text());
+            } else {
+                const userInfo=await response.json();
+                document.getElementById('field_email').innerText=userInfo['email'];
+            }
+        }
+
+        loadProfile();
+
         let pagination=new Pagination('org_list','/api/orgs/count',{'member':true});
         pagination.onCount=showOrgCount;
         pagination.loadList=loadOrgList;

@@ -3,3 +3,5 @@ create table tokens (
     email VARCHAR(254) NOT NULL,
     created timestamptz NOT NULL
 );
+
+CREATE INDEX tokens_email ON tokens(email);

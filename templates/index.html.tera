@@ -84,7 +84,11 @@
                     body: JSON.stringify({"address":email})
                 });
                 response.json().then(data=>{
-                    showToast(data);
+                    if (response.status==202){
+                        showToast(data);
+                    } else {
+                        showErrorToast(data);
+                    }
                 });
             }
         }

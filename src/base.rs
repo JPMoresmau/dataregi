@@ -78,6 +78,7 @@ pub struct Config {
     pub temp_dir: RelativePathBuf,
     pub aws_region: Region,
     pub aws_queue: String,
+    pub max_tries_minutes: i64,
 }
 
 
