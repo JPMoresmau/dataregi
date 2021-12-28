@@ -1,3 +1,1 @@
-anti spam measures: do not send token to same address more than once every minute...
-docker container
-create RDS DB and test
+similarity between documents that each user can see

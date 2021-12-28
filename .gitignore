@@ -1,3 +1,5 @@
 /target
 /dataregi.com
 /client_secret*
+/prod.txt
+/dataregi*.tar.gz
